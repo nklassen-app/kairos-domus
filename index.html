@@ -13,80 +13,437 @@
 <style>
   :root{
     --board:#f6f7f5; --edge:#d3d6d1; --ink:#000000; --graphite:#5a6067;
-    --blue:#1b54b8; --red:#d5322b; --green:#1f7a4c;
+    --blue:#1b54b8; --red:#d5322b; --green:#1f7a4c; --panel:#ffffff;
   }
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
   html,body{margin:0;padding:0;}
   body{background:var(--board);color:var(--ink);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;line-height:1.4;padding:20px 16px 56px;}
   .wrap{max-width:520px;margin:0 auto;}
-  header{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:22px;}
+  header{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:14px;}
   h1{font-size:21px;font-weight:650;letter-spacing:-.3px;margin:0;}
-  .count{font-size:14px;font-weight:600;color:var(--graphite);font-variant-numeric:tabular-nums;}
+  .year{font-size:14px;font-weight:600;color:var(--graphite);font-variant-numeric:tabular-nums;}
+
+  /* the budget line — the reason the app exists; always computed, never stored */
+  .budget{border:1.5px solid var(--edge);border-radius:10px;background:var(--panel);padding:10px 14px;margin-bottom:16px;font-variant-numeric:tabular-nums;}
+  .budget .top{display:flex;align-items:baseline;justify-content:space-between;gap:10px;}
+  .budget .label{font-size:13px;font-weight:650;color:var(--graphite);}
+  .budget .amount{font-size:18px;font-weight:650;cursor:text;}
+  .budget .amount.unset{color:var(--blue);font-size:15px;}
+  .budget .split{display:flex;gap:14px;margin-top:6px;font-size:14px;flex-wrap:wrap;}
+  .budget .split span b{font-weight:650;}
+  .budget .split .neg b{color:var(--red);}
+  .budget .caveat{font-size:12px;color:var(--graphite);margin-top:4px;}
+  .budget input{font:inherit;font-size:18px;font-weight:650;width:8ch;padding:0;border:none;border-bottom:1.5px solid var(--ink);background:transparent;border-radius:0;}
+  .budget input:focus{outline:none;}
+
+  .tabs{display:flex;gap:8px;margin-bottom:14px;}
+  .tab{flex:1;font:inherit;font-size:14px;font-weight:600;padding:9px 6px;border:1.5px solid var(--edge);border-radius:8px;background:var(--panel);color:var(--graphite);cursor:pointer;font-variant-numeric:tabular-nums;}
+  .tab[aria-selected="true"]{background:var(--ink);border-color:var(--ink);color:var(--panel);}
+
   .capture{display:flex;gap:8px;margin-bottom:12px;}
-  input{flex:1;font:inherit;font-size:16px;padding:11px 13px;background:#fff;border:1.5px solid var(--edge);border-radius:8px;color:var(--ink);}
-  input:focus{outline:none;border-color:var(--ink);}
+  input.field{flex:1;font:inherit;font-size:16px;padding:11px 13px;background:var(--panel);border:1.5px solid var(--edge);border-radius:8px;color:var(--ink);}
+  input.field:focus{outline:none;border-color:var(--ink);}
   .add{border:none;background:var(--ink);color:#fff;font:inherit;font-size:15px;font-weight:600;border-radius:8px;padding:0 16px;cursor:pointer;}
-  .board{border:1.5px solid var(--edge);border-radius:10px;background:#fff;padding:4px 0;}
+
+  .board{border:1.5px solid var(--edge);border-radius:10px;background:var(--panel);padding:4px 0;}
   .board.empty{padding:22px 16px;color:var(--graphite);font-size:14px;border-style:dashed;}
-  .row{display:flex;align-items:flex-start;gap:12px;padding:12px 14px;}
+  .row{display:flex;align-items:center;gap:10px;padding:10px 12px;user-select:none;-webkit-user-select:none;}
   .row + .row{border-top:1px solid #ecefea;}
-  .task{flex:1;font-size:16px;word-break:break-word;}
+  .num{flex:none;width:2ch;text-align:right;font-size:13px;color:var(--graphite);font-variant-numeric:tabular-nums;}
+  .main{flex:1;min-width:0;}
+  .title{font-size:16px;word-break:break-word;cursor:text;}
+  .meta{display:flex;gap:8px;margin-top:4px;align-items:center;font-size:13px;color:var(--graphite);font-variant-numeric:tabular-nums;}
+  .chip{font:inherit;font-size:12px;font-weight:650;padding:2px 8px;border:1.5px solid var(--edge);border-radius:999px;background:var(--panel);color:var(--graphite);cursor:pointer;min-width:34px;}
+  .chip.set{border-color:var(--ink);color:var(--ink);}
+  .cost{cursor:text;padding:2px 4px;border-radius:4px;}
+  .cost.none{color:#adb2ac;}
+  .cost input{font:inherit;font-size:13px;width:9ch;padding:0;border:none;border-bottom:1.5px solid var(--ink);background:transparent;border-radius:0;}
+  .cost input:focus{outline:none;}
+  .when{font-size:13px;color:var(--graphite);}
+  .edit{flex:1;min-width:0;font:inherit;font-size:16px;padding:0;margin:0;border:none;border-bottom:1.5px solid var(--ink);background:transparent;color:var(--ink);border-radius:0;width:100%;}
+  .edit:focus{outline:none;}
+
+  .order{display:flex;flex-direction:column;gap:2px;flex:none;}
+  .order button{font:inherit;font-size:12px;line-height:1;width:32px;height:22px;border:1.5px solid var(--edge);border-radius:5px;background:var(--panel);color:var(--graphite);cursor:pointer;padding:0;}
+  .order button:disabled{color:#d3d6d1;cursor:default;}
+  .act{flex:none;border:1.5px solid var(--blue);color:var(--blue);background:var(--panel);font:inherit;font-size:13px;font-weight:600;border-radius:6px;padding:7px 11px;cursor:pointer;}
+  .act.done{border-color:var(--green);color:var(--green);}
+  .completed .title{color:var(--graphite);}
   .note{font-size:13px;color:var(--graphite);margin:10px 2px 0;}
   .ver{position:fixed;right:10px;bottom:8px;font-size:11px;color:var(--graphite);opacity:.6;}
   :focus-visible{outline:2px solid var(--blue);outline-offset:2px;}
+  [hidden]{display:none !important;}
 </style>
 </head>
 <body>
 <div class="wrap">
   <header>
     <h1>Domus</h1>
-    <span class="count" id="count"></span>
+    <span class="year" id="year"></span>
   </header>
-  <section>
+
+  <div class="budget" id="budget" aria-live="polite"></div>
+
+  <div class="tabs" role="tablist" aria-label="Views">
+    <button class="tab" role="tab" id="tab-backlog" aria-selected="true" aria-controls="view-backlog">Backlog</button>
+    <button class="tab" role="tab" id="tab-active" aria-selected="false" aria-controls="view-active">Active</button>
+    <button class="tab" role="tab" id="tab-completed" aria-selected="false" aria-controls="view-completed">Completed</button>
+  </div>
+
+  <section id="view-backlog" role="tabpanel" aria-labelledby="tab-backlog">
     <div class="capture">
-      <input id="field" placeholder="Add an item" autocomplete="off" enterkeyhint="done">
+      <input class="field" id="field" placeholder="What needs to get done?" autocomplete="off" enterkeyhint="done">
       <button class="add" id="add" type="button">Add</button>
     </div>
-    <div class="board" id="list"></div>
-    <p class="note" id="status"></p>
+    <div class="board" id="backlog"></div>
+    <p class="note">Order is priority. Tap a title or a cost to edit it, the effort chip to cycle S · M · L. Hold a row to delete it.</p>
   </section>
+
+  <section id="view-active" role="tabpanel" aria-labelledby="tab-active" hidden>
+    <div class="board" id="active"></div>
+    <p class="note">Active projects are commitments: their estimated cost is counted against the budget.</p>
+  </section>
+
+  <section id="view-completed" role="tabpanel" aria-labelledby="tab-completed" hidden>
+    <div class="board completed" id="completed"></div>
+    <p class="note">Completed projects are kept. Nothing here is ever deleted.</p>
+  </section>
+
+  <p class="note" id="status"></p>
 </div>
 <!-- Keep in step with CACHE in sw.js — the visible proof of which build is running. -->
 <span class="ver">domus-v1</span>
 
 <script>
 // State: one JSON document in localStorage, on one device. No backup, no sync.
+// Project fields follow docs/DOMUS_DESIGN.md §4; the ones later stories use
+// (vendors, dependencies, scheduling, calendar) are carried empty from day one
+// so D2–D5 add to the record without restructuring it.
 const KEY = 'domus:v1';
-let state = { items: [] };
+const EFFORTS = [null, 'S', 'M', 'L'];
+let state = { projects: [], budget: { year: new Date().getFullYear(), amount: null, currency: 'USD' } };
+let view = null;   // 'backlog' | 'active' | 'completed'; null = not chosen yet
 
 const $ = id => document.getElementById(id);
-const esc = s => s.replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const newId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+const nowIso = () => new Date().toISOString();
+const byOrder = (a, b) => a.priority_order - b.priority_order;
+const backlog = () => state.projects.filter(p => p.status === 'backlog').sort(byOrder);
+const active = () => state.projects.filter(p => p.status === 'activated' || p.status === 'scheduled' || p.status === 'in_progress').sort(byOrder);
+const completed = () => state.projects.filter(p => p.status === 'completed').sort((a, b) => (b.completed_at || '').localeCompare(a.completed_at || ''));
+const find = id => state.projects.find(p => p.id === id);
+const yearOf = iso => Number((iso || '').slice(0, 4));
+
+function money(n){
+  if (n == null) return '—';
+  const opts = Number.isInteger(n) ? { maximumFractionDigits: 0 } : { minimumFractionDigits: 2, maximumFractionDigits: 2 };
+  return '$' + n.toLocaleString('en-US', opts);
+}
+function parseMoney(text){
+  const t = text.replace(/[$,\s]/g, '');
+  if (t === '') return null;
+  const n = Number(t);
+  return Number.isFinite(n) && n >= 0 ? Math.round(n * 100) / 100 : undefined;   // undefined = not a number
+}
+function dateOf(iso){
+  const d = new Date(iso);
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+// The budget arithmetic — computed on every render, never stored (Rule 10).
+// committed = every active project's estimated cost; spent = every project
+// completed in the budget year; a missing cost counts as zero and is counted.
+function budgetLine(){
+  const year = state.budget.year;
+  const act = active();
+  const done = completed().filter(p => yearOf(p.completed_at) === year);
+  const sum = list => list.reduce((s, p) => s + (p.estimated_cost || 0), 0);
+  const committed = sum(act), spent = sum(done);
+  const amount = state.budget.amount;
+  return {
+    year, amount, committed, spent,
+    remaining: amount == null ? null : amount - committed - spent,
+    uncosted: act.concat(done).filter(p => p.estimated_cost == null).length,
+  };
+}
 
 function load(){
-  try { const raw = localStorage.getItem(KEY); if (raw) state = JSON.parse(raw); }
-  catch (e) { $('status').textContent = 'Starting fresh.'; }
+  try {
+    const raw = localStorage.getItem(KEY);
+    if (raw){
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('not a document');
+      state = parsed;
+    }
+  } catch (e) { $('status').textContent = 'Starting fresh.'; }
+  if (!state.budget || typeof state.budget !== 'object') state.budget = { year: new Date().getFullYear(), amount: null, currency: 'USD' };
+  if (!Array.isArray(state.projects)) state.projects = [];
+  view = active().length ? 'active' : 'backlog';   // Active is the primary screen once anything is active
   render();
 }
 function save(){
   try { localStorage.setItem(KEY, JSON.stringify(state)); $('status').textContent = ''; }
   catch (e) { $('status').textContent = 'Not saved — this browser is blocking storage.'; }
 }
-function render(){
-  $('count').textContent = state.items.length ? String(state.items.length) : '';
-  const l = $('list');
-  if (!state.items.length){ l.className = 'board empty'; l.textContent = 'Nothing here yet.'; return; }
-  l.className = 'board';
-  l.innerHTML = state.items.map(t => `<div class="row" data-row="${t.id}"><span class="task">${esc(t.text)}</span></div>`).join('');
+
+function renderBudget(){
+  const b = budgetLine();
+  $('year').textContent = String(b.year);
+  const amount = b.amount == null
+    ? `<span class="amount unset" data-budget role="button" tabindex="0">Set the ${b.year} budget</span>`
+    : `<span class="amount" data-budget role="button" tabindex="0">${money(b.amount)}</span>`;
+  const remClass = b.remaining != null && b.remaining < 0 ? 'neg' : '';
+  const split = `<div class="split">
+      <span>committed <b id="committed">${money(b.committed)}</b></span>
+      <span>spent <b id="spent">${money(b.spent)}</b></span>
+      <span class="${remClass}">remaining <b id="remaining">${b.remaining == null ? '—' : money(b.remaining)}</b></span>
+    </div>`;
+  const caveat = b.uncosted ? `<div class="caveat" id="uncosted">${b.uncosted} project${b.uncosted === 1 ? '' : 's'} without a cost yet</div>` : '';
+  $('budget').innerHTML = `<div class="top"><span class="label">${b.year} budget</span>${amount}</div>${split}${caveat}`;
 }
+
+function rowMeta(p, editable){
+  const effort = editable
+    ? `<button class="chip ${p.effort ? 'set' : ''}" data-effort="${p.id}" aria-label="Effort">${p.effort || '—'}</button>`
+    : `<span class="chip ${p.effort ? 'set' : ''}">${p.effort || '—'}</span>`;
+  const cost = editable
+    ? `<span class="cost ${p.estimated_cost == null ? 'none' : ''}" data-cost="${p.id}" role="button" tabindex="0">${p.estimated_cost == null ? 'cost?' : money(p.estimated_cost)}</span>`
+    : `<span class="cost ${p.estimated_cost == null ? 'none' : ''}">${money(p.estimated_cost)}</span>`;
+  return `<div class="meta">${effort}${cost}${p.completed_at ? `<span class="when">${dateOf(p.completed_at)}</span>` : ''}</div>`;
+}
+
+function render(){
+  renderBudget();
+  const bl = backlog(), ac = active(), co = completed();
+  $('tab-backlog').textContent = bl.length ? `Backlog · ${bl.length}` : 'Backlog';
+  $('tab-active').textContent = ac.length ? `Active · ${ac.length}` : 'Active';
+  $('tab-completed').textContent = co.length ? `Completed · ${co.length}` : 'Completed';
+  for (const v of ['backlog', 'active', 'completed']){
+    $('tab-' + v).setAttribute('aria-selected', String(view === v));
+    $('view-' + v).hidden = view !== v;
+  }
+
+  const b = $('backlog');
+  if (!bl.length){ b.className = 'board empty'; b.textContent = 'Nothing waiting. Add what needs to get done.'; }
+  else {
+    b.className = 'board';
+    b.innerHTML = bl.map((p, i) => `
+      <div class="row" data-row="${p.id}">
+        <span class="num">${i + 1}</span>
+        <div class="main">
+          <div class="title" data-edit="${p.id}">${esc(p.title)}</div>
+          ${rowMeta(p, true)}
+        </div>
+        <div class="order">
+          <button data-up="${p.id}" aria-label="Move up" ${i === 0 ? 'disabled' : ''}>▲</button>
+          <button data-down="${p.id}" aria-label="Move down" ${i === bl.length - 1 ? 'disabled' : ''}>▼</button>
+        </div>
+        <button class="act" data-activate="${p.id}">Activate</button>
+      </div>`).join('');
+  }
+
+  const a = $('active');
+  if (!ac.length){ a.className = 'board empty'; a.textContent = 'Nothing active. Activate a project from the backlog to commit to it.'; }
+  else {
+    a.className = 'board';
+    a.innerHTML = ac.map(p => `
+      <div class="row" data-row="${p.id}">
+        <div class="main">
+          <div class="title" data-edit="${p.id}">${esc(p.title)}</div>
+          ${rowMeta(p, true)}
+        </div>
+        <button class="act done" data-complete="${p.id}">Done</button>
+      </div>`).join('');
+  }
+
+  const c = $('completed');
+  if (!co.length){ c.className = 'board completed empty'; c.textContent = 'Nothing completed yet.'; }
+  else {
+    c.className = 'board completed';
+    c.innerHTML = co.map(p => `
+      <div class="row" data-row="${p.id}">
+        <div class="main">
+          <div class="title">${esc(p.title)}</div>
+          ${rowMeta(p, false)}
+        </div>
+      </div>`).join('');
+  }
+}
+
+function show(v){ view = v; render(); }
+
 function add(){
-  const field = $('field'); const text = field.value.trim();
-  if (!text) return;
-  state.items.push({ id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), text });
+  const field = $('field');
+  const title = field.value.trim();
+  if (!title) return;
+  const last = backlog().reduce((m, p) => Math.max(m, p.priority_order), 0);
+  const t = nowIso();
+  state.projects.push({
+    id: newId(), title, description: '', priority_order: last + 1,
+    effort: null, estimated_cost: null, status: 'backlog',
+    assignee_id: null, vendor_ids: [], dependency_ids: [],
+    scheduled_start: null, scheduled_duration_minutes: null, calendar_event_id: null,
+    created_at: t, updated_at: t, completed_at: null,
+  });
   field.value = ''; field.focus();
   render(); save();
 }
+
+function touch(p){ p.updated_at = nowIso(); }
+
+// Reorder within the backlog: swap with the neighbour, then renumber 1..n so
+// priority_order is always dense. Active projects keep the order they had.
+function move(id, dir){
+  const bl = backlog();
+  const i = bl.findIndex(p => p.id === id);
+  const j = i + dir;
+  if (i < 0 || j < 0 || j >= bl.length) return;
+  [bl[i], bl[j]] = [bl[j], bl[i]];
+  bl.forEach((p, k) => { p.priority_order = k + 1; });
+  touch(find(id));
+  render(); save();
+}
+
+function activate(id){
+  const p = find(id);
+  if (!p || p.status !== 'backlog') return;
+  p.status = 'activated'; touch(p);
+  backlog().forEach((q, k) => { q.priority_order = k + 1; });
+  render(); save();
+}
+
+function complete(id){
+  const p = find(id);
+  if (!p || p.status === 'completed' || p.status === 'backlog') return;
+  p.status = 'completed'; p.completed_at = nowIso(); touch(p);
+  render(); save();
+}
+
+function cycleEffort(id){
+  const p = find(id);
+  if (!p || p.status === 'completed') return;
+  p.effort = EFFORTS[(EFFORTS.indexOf(p.effort) + 1) % EFFORTS.length];
+  touch(p);
+  render(); save();
+}
+
+// Tap a title to edit it in place. Enter or tapping away saves; Escape or an
+// empty field leaves the original untouched. Editing never deletes.
+function startEdit(el){
+  const p = find(el.dataset.edit);
+  const input = document.createElement('input');
+  input.className = 'edit'; input.value = p.title; input.setAttribute('aria-label', 'Edit title');
+  let finished = false;
+  const finish = commit => {
+    if (finished) return; finished = true;
+    const title = input.value.trim();
+    if (commit && title && title !== p.title){ p.title = title; touch(p); save(); }
+    render();
+  };
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter'){ e.preventDefault(); finish(true); }
+    if (e.key === 'Escape'){ e.preventDefault(); finish(false); }
+  });
+  input.addEventListener('blur', () => finish(true));
+  el.replaceWith(input); input.focus();
+  input.setSelectionRange(input.value.length, input.value.length);
+}
+
+// Tap a cost to edit it. Empty clears the cost (the project then counts as
+// zero and is counted as uncosted); a non-number leaves it untouched.
+function startCost(el){
+  const p = find(el.dataset.cost);
+  const input = document.createElement('input');
+  input.inputMode = 'decimal'; input.placeholder = '$';
+  input.value = p.estimated_cost == null ? '' : String(p.estimated_cost);
+  input.setAttribute('aria-label', 'Estimated cost');
+  let finished = false;
+  const finish = commit => {
+    if (finished) return; finished = true;
+    if (commit){
+      const n = parseMoney(input.value);
+      if (n !== undefined && n !== p.estimated_cost){ p.estimated_cost = n; touch(p); save(); }
+    }
+    render();
+  };
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter'){ e.preventDefault(); finish(true); }
+    if (e.key === 'Escape'){ e.preventDefault(); finish(false); }
+  });
+  input.addEventListener('blur', () => finish(true));
+  el.textContent = ''; el.appendChild(input); input.focus();
+}
+
+// Tap the budget figure to set it. Set once, changed the same way.
+function startBudget(el){
+  const input = document.createElement('input');
+  input.inputMode = 'decimal'; input.placeholder = '$';
+  input.value = state.budget.amount == null ? '' : String(state.budget.amount);
+  input.setAttribute('aria-label', 'Budget for the year');
+  let finished = false;
+  const finish = commit => {
+    if (finished) return; finished = true;
+    if (commit){
+      const n = parseMoney(input.value);
+      if (n !== undefined && n !== state.budget.amount){ state.budget.amount = n; save(); }
+    }
+    render();
+  };
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter'){ e.preventDefault(); finish(true); }
+    if (e.key === 'Escape'){ e.preventDefault(); finish(false); }
+  });
+  input.addEventListener('blur', () => finish(true));
+  el.replaceWith(input); input.focus();
+}
+
+// Deleting is the one destructive act and it is deliberate: hold a backlog
+// row, then confirm. Active projects are completed, not deleted; Completed
+// is never deleted.
+function askDelete(id){
+  const p = find(id);
+  if (!p || p.status !== 'backlog') return false;
+  if (!window.confirm(`Delete "${p.title}" from the backlog?`)) return false;
+  state.projects = state.projects.filter(q => q.id !== id);
+  backlog().forEach((q, k) => { q.priority_order = k + 1; });
+  render(); save();
+  return true;
+}
+let holdTimer = null;
+function holdStart(e){
+  const row = e.target.closest('#backlog .row');
+  if (!row || e.target.closest('button, input, [data-cost]')) return;
+  clearTimeout(holdTimer);
+  holdTimer = setTimeout(() => { holdTimer = null; askDelete(row.dataset.row); }, 600);
+}
+function holdEnd(){ clearTimeout(holdTimer); holdTimer = null; }
+
 $('add').addEventListener('click', add);
 $('field').addEventListener('keydown', e => { if (e.key === 'Enter'){ e.preventDefault(); add(); } });
+document.addEventListener('pointerdown', holdStart);
+document.addEventListener('pointerup', holdEnd);
+document.addEventListener('pointercancel', holdEnd);
+document.addEventListener('pointermove', holdEnd);
+document.addEventListener('contextmenu', e => { if (e.target.closest('#backlog .row')) e.preventDefault(); });
+
+document.addEventListener('click', e => {
+  const tab = e.target.closest('[role="tab"]');
+  if (tab){ show(tab.id.replace('tab-', '')); return; }
+  const up = e.target.closest('[data-up]');       if (up){ move(up.dataset.up, -1); return; }
+  const down = e.target.closest('[data-down]');   if (down){ move(down.dataset.down, 1); return; }
+  const act = e.target.closest('[data-activate]'); if (act){ activate(act.dataset.activate); return; }
+  const done = e.target.closest('[data-complete]'); if (done){ complete(done.dataset.complete); return; }
+  const eff = e.target.closest('[data-effort]');   if (eff){ cycleEffort(eff.dataset.effort); return; }
+  const cost = e.target.closest('[data-cost]');    if (cost && !cost.querySelector('input')){ startCost(cost); return; }
+  const bud = e.target.closest('[data-budget]');   if (bud){ startBudget(bud); return; }
+  const edit = e.target.closest('[data-edit]');    if (edit) startEdit(edit);
+});
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Enter' && e.key !== ' ') return;
+  const t = e.target.closest && e.target.closest('[data-cost], [data-budget]');
+  if (t && !t.querySelector('input')){ e.preventDefault(); t.click(); }
+});
 
 load();
 // updateViaCache:'none' keeps the HTTP cache out of sw.js checks, and every
