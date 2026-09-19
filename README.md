@@ -3,7 +3,7 @@
 The household projects backlog: one prioritized list of home-improvement work
 with an estimated cost per project and the year's budget at the top — what is
 committed, what is spent, what is left. Projects are activated deliberately,
-completed with a date, and kept. Not a chore app: mundane tasks live on the
+completed with a date, and kept; the vendors who do the work have a directory. Not a chore app: mundane tasks live on the
 Whiteboard and never enter here.
 
 Local-first single page, no build step, no dependencies, no account. Hosted on
@@ -34,10 +34,17 @@ backlog*.
    committed = everything active, spent = everything completed in the budget
    year, remaining = budget − committed − spent. The budget figure is set by
    tapping it; the year is the current one.
-7. Nothing is scheduled outside the app (Rule 11 of the spec) — the app is
+7. **Vendors** are records of their own (name, category, phone, email,
+   website, notes), added by name on the Vendors tab and edited in place:
+   tap the name or a field label to edit, tap a phone, email or website to
+   use it. Hold a row to delete — a vendor a project still names cannot be
+   deleted. Projects name vendors by id; none means DIY (the picker and the
+   monthly list are the next story).
+8. Nothing is scheduled outside the app (Rule 11 of the spec) — the app is
    the one place vendor work is planned from.
-8. State is one JSON document in `localStorage` under `domus:v1`, on one
-   device: `{ projects: [...], budget: { year, amount, currency } }`. Every
+9. State is one JSON document in `localStorage` under `domus:v1`, on one
+   device: `{ projects: [...], vendors: [...], budget: { year, amount,
+   currency } }`. Every
    project carries the spec's §4 fields from day one, the unused ones empty
    (`vendor_ids`, `dependency_ids`, `scheduled_*`, `calendar_event_id`), so
    later stories add to the record without restructuring it. No backup, no

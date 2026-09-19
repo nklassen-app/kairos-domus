@@ -69,6 +69,17 @@
   .act{flex:none;border:1.5px solid var(--blue);color:var(--blue);background:var(--panel);font:inherit;font-size:13px;font-weight:600;border-radius:6px;padding:7px 11px;cursor:pointer;}
   .act.done{border-color:var(--green);color:var(--green);}
   .completed .title{color:var(--graphite);}
+  .vendor .fields{display:flex;flex-wrap:wrap;gap:4px 12px;margin-top:4px;font-size:13px;}
+  .vendor .field{display:inline-flex;gap:5px;align-items:baseline;min-height:24px;}
+  .vendor .field .k{color:var(--graphite);cursor:text;padding:2px 0;}
+  .vendor .field .k::after{content:':';}
+  .vendor .field .v a{color:var(--blue);text-decoration:none;}
+  .vendor .field.empty .k{color:#adb2ac;}
+  .vendor .field.empty .k::after{content:' +';}
+  .vendor .field.empty .v{display:none;}
+  .vendor .field input{font:inherit;font-size:13px;width:14ch;padding:0;border:none;border-bottom:1.5px solid var(--ink);background:transparent;border-radius:0;}
+  .vendor .field input:focus{outline:none;}
+  .vendor .notes{font-size:13px;color:var(--graphite);margin-top:2px;white-space:pre-wrap;}
   .note{font-size:13px;color:var(--graphite);margin:10px 2px 0;}
   .ver{position:fixed;right:10px;bottom:8px;font-size:11px;color:var(--graphite);opacity:.6;}
   :focus-visible{outline:2px solid var(--blue);outline-offset:2px;}
@@ -87,6 +98,7 @@
   <div class="tabs" role="tablist" aria-label="Views">
     <button class="tab" role="tab" id="tab-backlog" aria-selected="true" aria-controls="view-backlog">Backlog</button>
     <button class="tab" role="tab" id="tab-active" aria-selected="false" aria-controls="view-active">Active</button>
+    <button class="tab" role="tab" id="tab-vendors" aria-selected="false" aria-controls="view-vendors">Vendors</button>
     <button class="tab" role="tab" id="tab-completed" aria-selected="false" aria-controls="view-completed">Completed</button>
   </div>
 
@@ -104,6 +116,15 @@
     <p class="note">Active projects are commitments: their estimated cost is counted against the budget.</p>
   </section>
 
+  <section id="view-vendors" role="tabpanel" aria-labelledby="tab-vendors" hidden>
+    <div class="capture">
+      <input class="field" id="vendor-field" placeholder="Who does the work?" autocomplete="off" enterkeyhint="done">
+      <button class="add" id="vendor-add" type="button">Add</button>
+    </div>
+    <div class="board" id="vendors"></div>
+    <p class="note">The people and companies who do the work. Tap a name or a field label to edit it; tap a phone, email or website to use it. Hold a row to delete it — a vendor a project still names cannot be deleted.</p>
+  </section>
+
   <section id="view-completed" role="tabpanel" aria-labelledby="tab-completed" hidden>
     <div class="board completed" id="completed"></div>
     <p class="note">Completed projects are kept. Nothing here is ever deleted.</p>
@@ -112,17 +133,19 @@
   <p class="note" id="status"></p>
 </div>
 <!-- Keep in step with CACHE in sw.js — the visible proof of which build is running. -->
-<span class="ver">domus-v1</span>
+<span class="ver">domus-v2</span>
 
 <script>
 // State: one JSON document in localStorage, on one device. No backup, no sync.
 // Project fields follow docs/DOMUS_DESIGN.md §4; the ones later stories use
-// (vendors, dependencies, scheduling, calendar) are carried empty from day one
-// so D2–D5 add to the record without restructuring it.
+// (dependencies, scheduling, calendar) are carried empty from day one so
+// D3–D5 add to the record without restructuring it. Vendors (§8) are their
+// own records in the same document, named by a project's vendor_ids.
 const KEY = 'domus:v1';
 const EFFORTS = [null, 'S', 'M', 'L'];
-let state = { projects: [], budget: { year: new Date().getFullYear(), amount: null, currency: 'USD' } };
-let view = null;   // 'backlog' | 'active' | 'completed'; null = not chosen yet
+const VENDOR_FIELDS = ['category', 'phone', 'email', 'website', 'notes'];
+let state = { projects: [], vendors: [], budget: { year: new Date().getFullYear(), amount: null, currency: 'USD' } };
+let view = null;   // 'backlog' | 'active' | 'vendors' | 'completed'; null = not chosen yet
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -133,6 +156,9 @@ const backlog = () => state.projects.filter(p => p.status === 'backlog').sort(by
 const active = () => state.projects.filter(p => p.status === 'activated' || p.status === 'scheduled' || p.status === 'in_progress').sort(byOrder);
 const completed = () => state.projects.filter(p => p.status === 'completed').sort((a, b) => (b.completed_at || '').localeCompare(a.completed_at || ''));
 const find = id => state.projects.find(p => p.id === id);
+const vendors = () => state.vendors.slice().sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
+const findVendor = id => state.vendors.find(v => v.id === id);
+const vendorInUse = id => state.projects.some(p => (p.vendor_ids || []).includes(id));
 const yearOf = iso => Number((iso || '').slice(0, 4));
 
 function money(n){
@@ -179,6 +205,7 @@ function load(){
   } catch (e) { $('status').textContent = 'Starting fresh.'; }
   if (!state.budget || typeof state.budget !== 'object') state.budget = { year: new Date().getFullYear(), amount: null, currency: 'USD' };
   if (!Array.isArray(state.projects)) state.projects = [];
+  if (!Array.isArray(state.vendors)) state.vendors = [];   // documents written before D2a have none
   view = active().length ? 'active' : 'backlog';   // Active is the primary screen once anything is active
   render();
 }
@@ -219,7 +246,9 @@ function render(){
   $('tab-backlog').textContent = bl.length ? `Backlog · ${bl.length}` : 'Backlog';
   $('tab-active').textContent = ac.length ? `Active · ${ac.length}` : 'Active';
   $('tab-completed').textContent = co.length ? `Completed · ${co.length}` : 'Completed';
-  for (const v of ['backlog', 'active', 'completed']){
+  const ve = vendors();
+  $('tab-vendors').textContent = ve.length ? `Vendors · ${ve.length}` : 'Vendors';
+  for (const v of ['backlog', 'active', 'vendors', 'completed']){
     $('tab-' + v).setAttribute('aria-selected', String(view === v));
     $('view-' + v).hidden = view !== v;
   }
@@ -257,6 +286,20 @@ function render(){
       </div>`).join('');
   }
 
+  const vb = $('vendors');
+  if (!ve.length){ vb.className = 'board empty'; vb.textContent = 'No vendors yet. Add the people who do the work.'; }
+  else {
+    vb.className = 'board';
+    vb.innerHTML = ve.map(v => `
+      <div class="row vendor" data-vendor-row="${v.id}">
+        <div class="main">
+          <div class="title" data-vendor-name="${v.id}">${esc(v.name)}</div>
+          <div class="fields">${VENDOR_FIELDS.filter(f => f !== 'notes').map(f => vendorField(v, f)).join('')}</div>
+          ${v.notes ? `<div class="notes" data-vendor-field="${v.id}" data-field="notes">${esc(v.notes)}</div>` : vendorField(v, 'notes')}
+        </div>
+      </div>`).join('');
+  }
+
   const c = $('completed');
   if (!co.length){ c.className = 'board completed empty'; c.textContent = 'Nothing completed yet.'; }
   else {
@@ -271,7 +314,69 @@ function render(){
   }
 }
 
+// A vendor field: the label is the edit handle, the value is a link where
+// it can be one (tel:, mailto:, the website) and plain text otherwise.
+function vendorField(v, f){
+  const val = v[f] || '';
+  const href = !val ? '' : f === 'phone' ? `tel:${val.replace(/[^+\d]/g, '')}` : f === 'email' ? `mailto:${val}` : f === 'website' ? (/^https?:\/\//i.test(val) ? val : `https://${val}`) : '';
+  const shown = href ? `<a href="${esc(href)}" target="_blank" rel="noopener">${esc(val)}</a>` : esc(val);
+  return `<span class="field ${val ? '' : 'empty'}"><span class="k" data-vendor-field="${v.id}" data-field="${f}">${f}</span><span class="v">${shown}</span></span>`;
+}
+
 function show(v){ view = v; render(); }
+
+function addVendor(){
+  const field = $('vendor-field');
+  const name = field.value.trim();
+  if (!name) return;
+  const t = nowIso();
+  state.vendors.push({ id: newId(), name, category: '', phone: '', email: '', website: '', notes: '', created_at: t, updated_at: t });
+  field.value = ''; field.focus();
+  render(); save();
+}
+
+// Tap a vendor's name or a field label to edit it in place. Enter or tapping
+// away saves; Escape leaves it. An empty name keeps the original (editing
+// never deletes); an empty field clears that field.
+function startVendorEdit(el){
+  const v = findVendor(el.dataset.vendorName || el.dataset.vendorField);
+  const f = el.dataset.vendorName ? 'name' : el.dataset.field;
+  const input = document.createElement('input');
+  input.className = f === 'name' ? 'edit' : '';
+  input.value = v[f] || '';
+  input.setAttribute('aria-label', f === 'name' ? 'Edit vendor name' : `Edit ${f}`);
+  if (f === 'phone') input.inputMode = 'tel';
+  if (f === 'email') input.inputMode = 'email';
+  if (f === 'website') input.inputMode = 'url';
+  let finished = false;
+  const finish = commit => {
+    if (finished) return; finished = true;
+    const text = input.value.trim();
+    if (commit && text !== (v[f] || '') && (f !== 'name' || text)){ v[f] = text; v.updated_at = nowIso(); save(); }
+    render();
+  };
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter'){ e.preventDefault(); finish(true); }
+    if (e.key === 'Escape'){ e.preventDefault(); finish(false); }
+  });
+  input.addEventListener('blur', () => finish(true));
+  if (f === 'name'){ el.replaceWith(input); }
+  else { const wrap = el.closest('.field') || el; wrap.replaceWith(input); }
+  input.focus();
+  input.setSelectionRange(input.value.length, input.value.length);
+}
+
+// A vendor a project still names cannot be deleted — the link is the
+// project's, not the directory's. Otherwise: hold, then confirm.
+function askDeleteVendor(id){
+  const v = findVendor(id);
+  if (!v) return false;
+  if (vendorInUse(id)){ $('status').textContent = `${v.name} is named by a project and stays.`; return false; }
+  if (!window.confirm(`Delete "${v.name}" from the vendors?`)) return false;
+  state.vendors = state.vendors.filter(q => q.id !== id);
+  render(); save();
+  return true;
+}
 
 function add(){
   const field = $('field');
@@ -412,10 +517,10 @@ function askDelete(id){
 }
 let holdTimer = null;
 function holdStart(e){
-  const row = e.target.closest('#backlog .row');
-  if (!row || e.target.closest('button, input, [data-cost]')) return;
+  const row = e.target.closest('#backlog .row, #vendors .row');
+  if (!row || e.target.closest('button, input, a, [data-cost]')) return;
   clearTimeout(holdTimer);
-  holdTimer = setTimeout(() => { holdTimer = null; askDelete(row.dataset.row); }, 600);
+  holdTimer = setTimeout(() => { holdTimer = null; row.dataset.vendorRow ? askDeleteVendor(row.dataset.vendorRow) : askDelete(row.dataset.row); }, 600);
 }
 function holdEnd(){ clearTimeout(holdTimer); holdTimer = null; }
 
@@ -425,7 +530,9 @@ document.addEventListener('pointerdown', holdStart);
 document.addEventListener('pointerup', holdEnd);
 document.addEventListener('pointercancel', holdEnd);
 document.addEventListener('pointermove', holdEnd);
-document.addEventListener('contextmenu', e => { if (e.target.closest('#backlog .row')) e.preventDefault(); });
+document.addEventListener('contextmenu', e => { if (e.target.closest('#backlog .row, #vendors .row')) e.preventDefault(); });
+$('vendor-add').addEventListener('click', addVendor);
+$('vendor-field').addEventListener('keydown', e => { if (e.key === 'Enter'){ e.preventDefault(); addVendor(); } });
 
 document.addEventListener('click', e => {
   const tab = e.target.closest('[role="tab"]');
@@ -437,6 +544,7 @@ document.addEventListener('click', e => {
   const eff = e.target.closest('[data-effort]');   if (eff){ cycleEffort(eff.dataset.effort); return; }
   const cost = e.target.closest('[data-cost]');    if (cost && !cost.querySelector('input')){ startCost(cost); return; }
   const bud = e.target.closest('[data-budget]');   if (bud){ startBudget(bud); return; }
+  const ven = e.target.closest('[data-vendor-name], [data-vendor-field]'); if (ven){ startVendorEdit(ven); return; }
   const edit = e.target.closest('[data-edit]');    if (edit) startEdit(edit);
 });
 document.addEventListener('keydown', e => {

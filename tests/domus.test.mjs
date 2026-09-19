@@ -326,3 +326,97 @@ test('a corrupt document starts fresh without throwing', () => {
   assert.doesNotThrow(() => w.load());
   assert.match($('#status').textContent, /Starting fresh/);
 });
+
+/* ---- vendors (D2a) ---- */
+
+const vendor = (over = {}) => ({ id: over.id || Math.random().toString(36).slice(2, 8), name: 'Someone', category: '', phone: '', email: '', website: '', notes: '', created_at: '2026-09-19T10:00:00.000Z', updated_at: '2026-09-19T10:00:00.000Z', ...over });
+const docV = (vendors, projects = []) => ({ projects, vendors, budget: { year: 2026, amount: null, currency: 'USD' } });
+
+function typeVendor(h, name) {
+  const f = h.w.document.getElementById('vendor-field'); f.value = name;
+  f.dispatchEvent(new h.w.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+}
+function editVendor(h, sel, value, key = 'Enter') {
+  h.w.document.querySelector(sel).click();
+  const input = h.w.document.querySelector('#vendors input');
+  assert.ok(input, `an input opened for ${sel}`);
+  input.value = value;
+  input.dispatchEvent(new h.w.KeyboardEvent('keydown', { key, bubbles: true }));
+}
+
+test('the Vendors tab is there, empty, and a document without vendors still loads', () => {
+  const h = boot({ seed: { [KEY]: doc([project({ id: 'a' })]) } });   // a D1-era document: no vendors array
+  h.click('#tab-vendors');
+  assert.equal(h.$('#view-vendors').hidden, false);
+  assert.match(h.$('#vendors').textContent, /No vendors yet/);
+  assert.equal(h.$('#tab-vendors').textContent, 'Vendors');
+});
+
+test('Enter adds a vendor by name with every field empty; the list is by name', () => {
+  const h = boot();
+  typeVendor(h, 'Zed Plumbing');
+  typeVendor(h, 'ace electric');
+  assert.deepEqual(h.titles('vendors'), ['ace electric', 'Zed Plumbing']);
+  assert.equal(h.$('#tab-vendors').textContent, 'Vendors · 2');
+  const v = h.stored().vendors.find(x => x.name === 'Zed Plumbing');
+  assert.deepEqual([v.category, v.phone, v.email, v.website, v.notes], ['', '', '', '', '']);
+  assert.equal(v.created_at, '2026-09-19T10:00:00.000Z');
+  typeVendor(h, '  ');
+  assert.equal(h.stored().vendors.length, 2);
+});
+
+test('a name edits in place; empty keeps the original; fields edit and clear; links form', () => {
+  const h = boot({ seed: { [KEY]: docV([vendor({ id: 'v', name: 'Ace' })]) } });
+  editVendor(h, '[data-vendor-name="v"]', 'Ace Electric');
+  assert.deepEqual(h.titles('vendors'), ['Ace Electric']);
+  editVendor(h, '[data-vendor-name="v"]', '');
+  assert.deepEqual(h.titles('vendors'), ['Ace Electric']);
+  editVendor(h, '[data-vendor-field="v"][data-field="phone"]', '(555) 010-2030');
+  assert.equal(h.$('#vendors a[href="tel:5550102030"]').textContent, '(555) 010-2030');
+  editVendor(h, '[data-vendor-field="v"][data-field="email"]', 'ace@example.com');
+  assert.ok(h.$('#vendors a[href="mailto:ace@example.com"]'));
+  editVendor(h, '[data-vendor-field="v"][data-field="website"]', 'ace.example.com');
+  assert.ok(h.$('#vendors a[href="https://ace.example.com"]'));
+  editVendor(h, '[data-vendor-field="v"][data-field="category"]', 'Electrician');
+  editVendor(h, '[data-vendor-field="v"][data-field="notes"]', 'Licensed; came recommended.');
+  assert.equal(h.$('#vendors .notes').textContent, 'Licensed; came recommended.');
+  const v = h.stored().vendors[0];
+  assert.deepEqual([v.category, v.phone, v.email, v.website, v.notes], ['Electrician', '(555) 010-2030', 'ace@example.com', 'ace.example.com', 'Licensed; came recommended.']);
+  editVendor(h, '[data-vendor-field="v"][data-field="phone"]', '');
+  assert.equal(h.stored().vendors[0].phone, '');
+  assert.equal(h.$('#vendors a[href^="tel:"]'), null);
+  editVendor(h, '[data-vendor-field="v"][data-field="category"]', 'thrown away', 'Escape');
+  assert.equal(h.stored().vendors[0].category, 'Electrician');
+});
+
+test('askDeleteVendor: confirmed removes a free vendor; a vendor a project names stays', () => {
+  const seed = docV([vendor({ id: 'free', name: 'Free' }), vendor({ id: 'used', name: 'Used' })], [project({ id: 'p', vendor_ids: ['used'] })]);
+  const yes = boot({ seed: { [KEY]: seed }, confirm: true });
+  assert.equal(yes.w.askDeleteVendor('used'), false);
+  assert.match(yes.$('#status').textContent, /Used is named by a project/);
+  assert.equal(yes.w.askDeleteVendor('free'), true);
+  assert.deepEqual(yes.stored().vendors.map(v => v.name), ['Used']);
+  const no = boot({ seed: { [KEY]: seed }, confirm: false });
+  assert.equal(no.w.askDeleteVendor('free'), false);
+  assert.equal(no.stored().vendors.length, 2);
+});
+
+test('a hold on a vendor row asks; a hold on its link does not', async () => {
+  const h = boot({ seed: { [KEY]: docV([vendor({ id: 'v', name: 'Ace', phone: '555' })]) }, confirm: true });
+  h.$('#vendors a[href^="tel:"]').dispatchEvent(new h.w.Event('pointerdown', { bubbles: true }));
+  await new Promise(r => setTimeout(r, 700));
+  assert.deepEqual(h.titles('vendors'), ['Ace']);
+  h.$('[data-vendor-row="v"]').dispatchEvent(new h.w.Event('pointerdown', { bubbles: true }));
+  await new Promise(r => setTimeout(r, 700));
+  assert.deepEqual(h.titles('vendors'), []);
+});
+
+test('vendors survive a reload alongside projects and the budget', () => {
+  const first = boot();
+  first.type('Fix garage door');
+  typeVendor(first, 'Ace');
+  const again = boot({ seed: { [KEY]: first.stored() } });
+  assert.deepEqual(again.titles('backlog'), ['Fix garage door']);
+  assert.deepEqual(again.titles('vendors'), ['Ace']);
+  assert.deepEqual(again.stored(), first.stored());
+});
