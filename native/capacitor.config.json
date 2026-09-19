@@ -1,0 +1,12 @@
+{
+  "appId": "app.nklassen.domus",
+  "appName": "Domus",
+  "webDir": "www",
+  "server": {
+    "url": "https://nklassen-app.github.io/kairos-domus/",
+    "allowNavigation": ["nklassen-app.github.io"]
+  },
+  "android": {
+    "allowMixedContent": false
+  }
+}

@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#f6f7f5">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Domus">
+<title>Domus</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon.svg">
+<style>
+  :root{
+    --board:#f6f7f5; --edge:#d3d6d1; --ink:#000000; --graphite:#5a6067;
+    --blue:#1b54b8; --red:#d5322b; --green:#1f7a4c;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;padding:0;}
+  body{background:var(--board);color:var(--ink);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;line-height:1.4;padding:20px 16px 56px;}
+  .wrap{max-width:520px;margin:0 auto;}
+  header{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:22px;}
+  h1{font-size:21px;font-weight:650;letter-spacing:-.3px;margin:0;}
+  .count{font-size:14px;font-weight:600;color:var(--graphite);font-variant-numeric:tabular-nums;}
+  .capture{display:flex;gap:8px;margin-bottom:12px;}
+  input{flex:1;font:inherit;font-size:16px;padding:11px 13px;background:#fff;border:1.5px solid var(--edge);border-radius:8px;color:var(--ink);}
+  input:focus{outline:none;border-color:var(--ink);}
+  .add{border:none;background:var(--ink);color:#fff;font:inherit;font-size:15px;font-weight:600;border-radius:8px;padding:0 16px;cursor:pointer;}
+  .board{border:1.5px solid var(--edge);border-radius:10px;background:#fff;padding:4px 0;}
+  .board.empty{padding:22px 16px;color:var(--graphite);font-size:14px;border-style:dashed;}
+  .row{display:flex;align-items:flex-start;gap:12px;padding:12px 14px;}
+  .row + .row{border-top:1px solid #ecefea;}
+  .task{flex:1;font-size:16px;word-break:break-word;}
+  .note{font-size:13px;color:var(--graphite);margin:10px 2px 0;}
+  .ver{position:fixed;right:10px;bottom:8px;font-size:11px;color:var(--graphite);opacity:.6;}
+  :focus-visible{outline:2px solid var(--blue);outline-offset:2px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Domus</h1>
+    <span class="count" id="count"></span>
+  </header>
+  <section>
+    <div class="capture">
+      <input id="field" placeholder="Add an item" autocomplete="off" enterkeyhint="done">
+      <button class="add" id="add" type="button">Add</button>
+    </div>
+    <div class="board" id="list"></div>
+    <p class="note" id="status"></p>
+  </section>
+</div>
+<!-- Keep in step with CACHE in sw.js — the visible proof of which build is running. -->
+<span class="ver">domus-v1</span>
+
+<script>
+// State: one JSON document in localStorage, on one device. No backup, no sync.
+const KEY = 'domus:v1';
+let state = { items: [] };
+
+const $ = id => document.getElementById(id);
+const esc = s => s.replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+function load(){
+  try { const raw = localStorage.getItem(KEY); if (raw) state = JSON.parse(raw); }
+  catch (e) { $('status').textContent = 'Starting fresh.'; }
+  render();
+}
+function save(){
+  try { localStorage.setItem(KEY, JSON.stringify(state)); $('status').textContent = ''; }
+  catch (e) { $('status').textContent = 'Not saved — this browser is blocking storage.'; }
+}
+function render(){
+  $('count').textContent = state.items.length ? String(state.items.length) : '';
+  const l = $('list');
+  if (!state.items.length){ l.className = 'board empty'; l.textContent = 'Nothing here yet.'; return; }
+  l.className = 'board';
+  l.innerHTML = state.items.map(t => `<div class="row" data-row="${t.id}"><span class="task">${esc(t.text)}</span></div>`).join('');
+}
+function add(){
+  const field = $('field'); const text = field.value.trim();
+  if (!text) return;
+  state.items.push({ id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), text });
+  field.value = ''; field.focus();
+  render(); save();
+}
+$('add').addEventListener('click', add);
+$('field').addEventListener('keydown', e => { if (e.key === 'Enter'){ e.preventDefault(); add(); } });
+
+load();
+// updateViaCache:'none' keeps the HTTP cache out of sw.js checks, and every
+// return to the foreground forces one — for WebViews that skip the re-check.
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then(reg => {
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') reg.update();
+    });
+  });
+}
+</script>
+</body>
+</html>
