@@ -31,7 +31,7 @@ const doc = (projects, budget = { year: 2026, amount: null, currency: 'USD' }) =
 // Boot the page at a fixed instant (UTC, so the stored ISO strings are
 // the same in every zone). `seed` pre-populates localStorage
 // (values are JSON-encoded); `confirm` is what window.confirm answers.
-function boot({ now = new Date('2026-09-19T10:00:00.000Z'), seed = {}, confirm = true } = {}) {
+function boot({ now = new Date('2026-09-19T10:00:00.000Z'), seed = {}, confirm = true, prompt = null } = {}) {
   const fixed = now.getTime();
   const dom = new JSDOM(HTML, {
     url: 'http://localhost/',
@@ -45,6 +45,7 @@ function boot({ now = new Date('2026-09-19T10:00:00.000Z'), seed = {}, confirm =
       }
       window.Date = Fixed;
       window.confirm = () => confirm;
+      window.prompt = () => prompt;   // what a "+ New vendor…" prompt answers; null = cancelled
       for (const [k, v] of Object.entries(seed)) window.localStorage.setItem(k, JSON.stringify(v));
     },
   });
@@ -505,4 +506,83 @@ test('a chosen file imports the same way', async () => {
   await new Promise(r => setTimeout(r, 50));
   assert.equal(h.$('#status').textContent, 'Imported 3 vendors.');
   assert.equal(h.stored().vendors.length, 3);
+});
+
+/* ---- vendors on projects (D2b, first half) ---- */
+
+const pickOn = (h, sel, value) => {
+  h.click(sel);
+  const picker = h.$('#backlog select.picker, #active select.picker');
+  assert.ok(picker, `a picker opened for ${sel}`);
+  picker.value = value;
+  picker.dispatchEvent(new h.w.Event('change', { bubbles: true }));
+};
+const chips = (h, board, id) => [...h.w.document.querySelectorAll(`#${board} [data-row="${id}"] .chip.vendor`)].map(e => e.textContent);
+
+test('the intake dropdown: DIY by default, a chosen vendor lands on the new project, "+ New vendor…" prompts and selects', () => {
+  const h = boot({ seed: { [KEY]: docV([vendor({ id: 'ace', name: 'Ace' }), vendor({ id: 'zed', name: 'Zed' })]) }, prompt: 'Bo Builders' });
+  const sel = h.$('#field-vendor');
+  assert.deepEqual([...sel.options].map(o => o.textContent), ['No vendor (DIY)', 'Ace', 'Zed', '+ New vendor…']);
+  h.type('Fix door');
+  assert.deepEqual(h.stored().projects[0].vendor_ids, []);
+  sel.value = 'zed';
+  h.type('Paint');
+  assert.deepEqual(h.stored().projects[1].vendor_ids, ['zed']);
+  assert.equal(sel.value, '', 'the dropdown resets after an add');
+  sel.value = '__new';
+  sel.dispatchEvent(new h.w.Event('change', { bubbles: true }));
+  const bo = h.stored().vendors.find(v => v.name === 'Bo Builders');
+  assert.ok(bo, 'the new vendor is stored at once');
+  assert.equal(h.$('#field-vendor').value, bo.id);
+  h.type('Deck');
+  assert.deepEqual(h.stored().projects[2].vendor_ids, [bo.id]);
+  const cancelled = boot({ prompt: null });
+  cancelled.$('#field-vendor').value = '__new';
+  cancelled.$('#field-vendor').dispatchEvent(new cancelled.w.Event('change', { bubbles: true }));
+  assert.equal(cancelled.$('#field-vendor').value, '');
+  assert.equal(cancelled.stored(), null);
+});
+
+test('a row picks, adds a second, changes and removes vendors; the chips say who', () => {
+  const h = boot({ seed: { [KEY]: docV([vendor({ id: 'ace', name: 'Ace' }), vendor({ id: 'zed', name: 'Zed' })], [project({ id: 'p', title: 'Fence' })]) }, prompt: 'Cy Concrete' });
+  assert.equal(h.$('#backlog [data-pick="p"]').textContent, 'vendor +');
+  pickOn(h, '#backlog [data-pick="p"]', 'ace');
+  assert.deepEqual(chips(h, 'backlog', 'p'), ['Ace']);
+  assert.deepEqual(h.stored().projects[0].vendor_ids, ['ace']);
+  pickOn(h, '#backlog .chip.pick', 'zed');
+  assert.deepEqual(chips(h, 'backlog', 'p'), ['Ace', 'Zed']);
+  pickOn(h, '#backlog .chip.pick', 'ace');   // already there: not doubled
+  assert.deepEqual(h.stored().projects[0].vendor_ids, ['ace', 'zed']);
+  pickOn(h, '#backlog [data-vendor="ace"]', '__new');   // change Ace to a new vendor, made on the spot
+  assert.deepEqual(chips(h, 'backlog', 'p'), ['Zed', 'Cy Concrete']);
+  assert.equal(h.stored().vendors.length, 3);
+  pickOn(h, '#backlog [data-vendor="zed"]', '');   // "Remove"
+  assert.deepEqual(chips(h, 'backlog', 'p'), ['Cy Concrete']);
+  assert.equal(h.w.askDeleteVendor(h.stored().vendors.find(v => v.name === 'Cy Concrete').id), false, 'the D2a guard is reached');
+  h.click('#backlog .chip.pick');
+  h.$('#backlog select.picker').dispatchEvent(new h.w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  assert.equal(h.$('select.picker'), null, 'Escape closes the picker unchanged');
+  assert.deepEqual(chips(h, 'backlog', 'p'), ['Cy Concrete']);
+});
+
+test('Active rows pick too; Completed shows the chips read-only; a tap elsewhere closes an open picker', () => {
+  const h = boot({ seed: { [KEY]: docV([vendor({ id: 'ace', name: 'Ace' })], [project({ id: 'a', title: 'Roof', status: 'activated', vendor_ids: ['ace'] }), project({ id: 'c', title: 'Old', status: 'completed', completed_at: '2026-03-01T10:00:00.000Z', vendor_ids: ['ace'] })]) } });
+  assert.deepEqual(chips(h, 'active', 'a'), ['Ace']);
+  pickOn(h, '#active [data-vendor="ace"]', '');
+  assert.deepEqual(h.stored().projects.find(p => p.id === 'a').vendor_ids, []);
+  h.click('#tab-completed');
+  assert.deepEqual(chips(h, 'completed', 'c'), ['Ace']);
+  assert.equal(h.$('#completed [data-pick]'), null);
+  h.click('#tab-active');
+  h.click('#active .chip.pick');
+  assert.ok(h.$('#active select.picker'));
+  h.$('h1').dispatchEvent(new h.w.Event('pointerdown', { bubbles: true }));
+  assert.equal(h.$('select.picker'), null);
+});
+
+test('a vendor the seed never knew shows as ? and the links survive a reload', () => {
+  const first = boot({ seed: { [KEY]: docV([vendor({ id: 'ace', name: 'Ace' })], [project({ id: 'p', vendor_ids: ['ace', 'gone'] })]) } });
+  assert.deepEqual(chips(first, 'backlog', 'p'), ['Ace', '?']);
+  const again = boot({ seed: { [KEY]: first.stored() } });
+  assert.deepEqual(again.stored().projects[0].vendor_ids, ['ace', 'gone']);
 });

@@ -55,6 +55,12 @@
   .meta{display:flex;gap:8px;margin-top:4px;align-items:center;font-size:13px;color:var(--graphite);font-variant-numeric:tabular-nums;}
   .chip{font:inherit;font-size:12px;font-weight:650;padding:2px 8px;border:1.5px solid var(--edge);border-radius:999px;background:var(--panel);color:var(--graphite);cursor:pointer;min-width:34px;}
   .chip.set{border-color:var(--ink);color:var(--ink);}
+  .chip.vendor{border-color:var(--blue);color:var(--blue);max-width:16ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .chip.pick{border-style:dashed;color:#adb2ac;}
+  .meta select{font:inherit;font-size:13px;max-width:18ch;padding:2px 4px;border:1.5px solid var(--ink);border-radius:6px;background:var(--panel);color:var(--ink);}
+  select.field{flex:1;font:inherit;font-size:14px;padding:9px 13px;background:var(--panel);border:1.5px solid var(--edge);border-radius:8px;color:var(--ink);}
+  select.field:focus{outline:none;border-color:var(--ink);}
+  .capture.vendor{margin-top:-4px;}
   .cost{cursor:text;padding:2px 4px;border-radius:4px;}
   .cost.none{color:#adb2ac;}
   .cost input{font:inherit;font-size:13px;width:9ch;padding:0;border:none;border-bottom:1.5px solid var(--ink);background:transparent;border-radius:0;}
@@ -116,8 +122,11 @@
       <input class="field" id="field" placeholder="What needs to get done?" autocomplete="off" enterkeyhint="done">
       <button class="add" id="add" type="button">Add</button>
     </div>
+    <div class="capture vendor">
+      <select class="field" id="field-vendor" aria-label="Vendor for the new project"></select>
+    </div>
     <div class="board" id="backlog"></div>
-    <p class="note">Order is priority. Tap a title or a cost to edit it, the effort chip to cycle S · M · L. Hold a row to delete it.</p>
+    <p class="note">Order is priority. Tap a title or a cost to edit it, the effort chip to cycle S · M · L, a vendor chip to change it and the dashed one to add one. Hold a row to delete it.</p>
   </section>
 
   <section id="view-active" role="tabpanel" aria-labelledby="tab-active" hidden>
@@ -151,7 +160,7 @@
   <p class="note" id="status"></p>
 </div>
 <!-- Keep in step with CACHE in sw.js — the visible proof of which build is running. -->
-<span class="ver">domus-v3</span>
+<span class="ver">domus-v4</span>
 
 <script>
 // State: one JSON document in localStorage, on one device. No backup, no sync.
@@ -255,11 +264,56 @@ function rowMeta(p, editable){
   const cost = editable
     ? `<span class="cost ${p.estimated_cost == null ? 'none' : ''}" data-cost="${p.id}" role="button" tabindex="0">${p.estimated_cost == null ? 'cost?' : money(p.estimated_cost)}</span>`
     : `<span class="cost ${p.estimated_cost == null ? 'none' : ''}">${money(p.estimated_cost)}</span>`;
-  return `<div class="meta">${effort}${cost}${p.completed_at ? `<span class="when">${dateOf(p.completed_at)}</span>` : ''}</div>`;
+  return `<div class="meta">${effort}${cost}${vendorChips(p, editable)}${p.completed_at ? `<span class="when">${dateOf(p.completed_at)}</span>` : ''}</div>`;
+}
+
+// Vendors on a project (D2b): zero, one or several, as chips on the row.
+// Tap a chip to change or remove that vendor, the dashed chip to add one;
+// either opens a picker that also offers "+ New vendor…". None means DIY.
+const vendorName = id => (findVendor(id) || {}).name || '?';
+function vendorChips(p, editable){
+  const ids = p.vendor_ids || [];
+  const chips = ids.map(id => editable
+    ? `<button class="chip vendor" data-pick="${p.id}" data-vendor="${id}" aria-label="Change vendor">${esc(vendorName(id))}</button>`
+    : `<span class="chip vendor">${esc(vendorName(id))}</span>`).join('');
+  return chips + (editable ? `<button class="chip pick" data-pick="${p.id}" aria-label="Add a vendor">${ids.length ? '+' : 'vendor +'}</button>` : '');
+}
+const vendorOptions = current => vendors().map(v => `<option value="${v.id}" ${v.id === current ? 'selected' : ''}>${esc(v.name)}</option>`).join('') + '<option value="__new">+ New vendor…</option>';
+function renderIntakeVendor(){
+  const sel = $('field-vendor');
+  const keep = sel.value;
+  sel.innerHTML = '<option value="">No vendor (DIY)</option>' + vendorOptions('');
+  sel.value = [...sel.options].some(o => o.value === keep) ? keep : '';
+}
+function newVendorByPrompt(){
+  const name = (window.prompt('New vendor — name?') || '').trim();
+  return name ? createVendor(name) : null;
+}
+// The picker replaces the tapped chip. A choice commits at once; Escape or
+// a tap anywhere else leaves things as they were (no blur handling — on
+// Android the native picker must not be cut short by a focus change).
+function startPick(el){
+  const p = find(el.dataset.pick);
+  const current = el.dataset.vendor || '';
+  const sel = document.createElement('select');
+  sel.className = 'picker';
+  sel.setAttribute('aria-label', current ? 'Change vendor' : 'Pick a vendor');
+  sel.innerHTML = `<option value="">${current ? 'Remove' : 'Pick a vendor'}</option>` + vendorOptions(current);
+  sel.addEventListener('change', () => { setVendor(p, current, sel.value); render(); });
+  sel.addEventListener('keydown', e => { if (e.key === 'Escape'){ e.preventDefault(); render(); } });
+  el.replaceWith(sel); sel.focus();
+}
+function setVendor(p, fromId, choice){
+  let toId = choice;
+  if (choice === '__new'){ const v = newVendorByPrompt(); if (!v) return; toId = v.id; }
+  const ids = (p.vendor_ids || []).filter(id => id !== fromId);
+  if (toId && !ids.includes(toId)) ids.push(toId);
+  p.vendor_ids = ids; touch(p); save();
 }
 
 function render(){
   renderBudget();
+  renderIntakeVendor();
   const bl = backlog(), ac = active(), co = completed();
   $('tab-backlog').textContent = bl.length ? `Backlog · ${bl.length}` : 'Backlog';
   $('tab-active').textContent = ac.length ? `Active · ${ac.length}` : 'Active';
@@ -347,10 +401,15 @@ function addVendor(){
   const field = $('vendor-field');
   const name = field.value.trim();
   if (!name) return;
-  const t = nowIso();
-  state.vendors.push({ id: newId(), name, category: '', phone: '', email: '', website: '', notes: '', created_at: t, updated_at: t });
+  createVendor(name);
   field.value = ''; field.focus();
   render(); save();
+}
+function createVendor(name){
+  const t = nowIso();
+  const v = { id: newId(), name, category: '', phone: '', email: '', website: '', notes: '', created_at: t, updated_at: t };
+  state.vendors.push(v);
+  return v;
 }
 
 // Tap a vendor's name or a field label to edit it in place. Enter or tapping
@@ -479,14 +538,15 @@ function add(){
   if (!title) return;
   const last = backlog().reduce((m, p) => Math.max(m, p.priority_order), 0);
   const t = nowIso();
+  const chosen = $('field-vendor').value;
   state.projects.push({
     id: newId(), title, description: '', priority_order: last + 1,
     effort: null, estimated_cost: null, status: 'backlog',
-    assignee_id: null, vendor_ids: [], dependency_ids: [],
+    assignee_id: null, vendor_ids: chosen && findVendor(chosen) ? [chosen] : [], dependency_ids: [],
     scheduled_start: null, scheduled_duration_minutes: null, calendar_event_id: null,
     created_at: t, updated_at: t, completed_at: null,
   });
-  field.value = ''; field.focus();
+  field.value = ''; $('field-vendor').value = ''; field.focus();
   render(); save();
 }
 
@@ -612,8 +672,10 @@ function askDelete(id){
 }
 let holdTimer = null;
 function holdStart(e){
+  const open = document.querySelector('select.picker');
+  if (open && e.target !== open) render();
   const row = e.target.closest('#backlog .row, #vendors .row');
-  if (!row || e.target.closest('button, input, a, [data-cost]')) return;
+  if (!row || e.target.closest('button, input, select, a, [data-cost]')) return;
   clearTimeout(holdTimer);
   holdTimer = setTimeout(() => { holdTimer = null; row.dataset.vendorRow ? askDeleteVendor(row.dataset.vendorRow) : askDelete(row.dataset.row); }, 600);
 }
@@ -627,6 +689,14 @@ document.addEventListener('pointercancel', holdEnd);
 document.addEventListener('pointermove', holdEnd);
 document.addEventListener('contextmenu', e => { if (e.target.closest('#backlog .row, #vendors .row')) e.preventDefault(); });
 $('vendor-add').addEventListener('click', addVendor);
+$('field-vendor').addEventListener('change', e => {
+  if (e.target.value !== '__new') return;
+  const v = newVendorByPrompt();
+  if (v) save();
+  e.target.value = v ? v.id : '';
+  render();
+  if (v) $('field-vendor').value = v.id;
+});
 $('vendor-field').addEventListener('keydown', e => { if (e.key === 'Enter'){ e.preventDefault(); addVendor(); } });
 $('vendor-import-go').addEventListener('click', importFromPaste);
 $('vendor-file').addEventListener('change', importFromFile);
@@ -641,6 +711,7 @@ document.addEventListener('click', e => {
   const eff = e.target.closest('[data-effort]');   if (eff){ cycleEffort(eff.dataset.effort); return; }
   const cost = e.target.closest('[data-cost]');    if (cost && !cost.querySelector('input')){ startCost(cost); return; }
   const bud = e.target.closest('[data-budget]');   if (bud){ startBudget(bud); return; }
+  const pick = e.target.closest('[data-pick]');    if (pick){ startPick(pick); return; }
   const ven = e.target.closest('[data-vendor-name], [data-vendor-field]'); if (ven){ startVendorEdit(ven); return; }
   const edit = e.target.closest('[data-edit]');    if (edit) startEdit(edit);
 });

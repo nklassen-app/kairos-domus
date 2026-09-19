@@ -38,8 +38,14 @@ backlog*.
    website, notes), added by name on the Vendors tab and edited in place:
    tap the name or a field label to edit, tap a phone, email or website to
    use it. Hold a row to delete — a vendor a project still names cannot be
-   deleted. Projects name vendors by id; none means DIY (the picker and the
-   monthly list are the next story). The list can also be **imported** from
+   deleted. **Projects name vendors** by id — zero, one or several; none
+   means DIY. The Add field has a vendor dropdown for the new project, and
+   every Backlog or Active row carries the vendors as chips: tap a chip to
+   change or remove that vendor, the dashed chip to add one; both pickers
+   offer "+ New vendor…", which asks for a name and creates the vendor on
+   the spot. Completed rows show their chips read-only. (The monthly list
+   by vendor is the second half of that story.) The list can also be
+   **imported** from
    JSON on the Vendors tab (a file or pasted text): a bare list, the app's
    own `vendors`, or the household seed's `contacts` — extra fields fold
    into notes, a name already present is skipped. The seed is real contact

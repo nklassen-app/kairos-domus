@@ -1,4 +1,4 @@
-const CACHE = 'domus-v3';   // D2i: import the vendor seed   // bump on EVERY content change, and the .ver marker in index.html with it
+const CACHE = 'domus-v4';   // D2b (first half): vendors on projects   // bump on EVERY content change, and the .ver marker in index.html with it
 const ASSETS = ['.', 'index.html', 'manifest.webmanifest', 'icon.svg'];
 
 self.addEventListener('install', e => {
