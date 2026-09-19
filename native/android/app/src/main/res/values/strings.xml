@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Domus</string>
+    <string name="title_activity_main">Domus</string>
+    <string name="package_name">app.nklassen.domus</string>
+    <string name="custom_url_scheme">app.nklassen.domus</string>
+</resources>

@@ -2,9 +2,10 @@
 // Foreground shapes are scaled to 60% so nothing falls outside the adaptive-
 // icon safe zone (central 66/108) under circular masks.
 import sharp from 'sharp';
-import { readFileSync } from 'fs';
+import { readFileSync, mkdirSync } from 'fs';
 
 const svg = readFileSync(new URL('../icon.svg', import.meta.url));
+mkdirSync('assets', { recursive: true });   // the PNGs are ignored, so a fresh clone has no assets/ yet
 
 // Full-bleed icon for legacy launchers.
 await sharp(svg).resize(1024, 1024).png().toFile('assets/icon-only.png');
