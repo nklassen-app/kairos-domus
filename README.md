@@ -39,7 +39,11 @@ backlog*.
    tap the name or a field label to edit, tap a phone, email or website to
    use it. Hold a row to delete — a vendor a project still names cannot be
    deleted. Projects name vendors by id; none means DIY (the picker and the
-   monthly list are the next story).
+   monthly list are the next story). The list can also be **imported** from
+   JSON on the Vendors tab (a file or pasted text): a bare list, the app's
+   own `vendors`, or the household seed's `contacts` — extra fields fold
+   into notes, a name already present is skipped. The seed is real contact
+   data: it is ignored (`*seed*.json`) and never committed.
 8. Nothing is scheduled outside the app (Rule 11 of the spec) — the app is
    the one place vendor work is planned from.
 9. State is one JSON document in `localStorage` under `domus:v1`, on one

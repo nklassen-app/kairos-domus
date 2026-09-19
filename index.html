@@ -81,6 +81,15 @@
   .vendor .field input:focus{outline:none;}
   .vendor .notes{font-size:13px;color:var(--graphite);margin-top:2px;white-space:pre-wrap;}
   .note{font-size:13px;color:var(--graphite);margin:10px 2px 0;}
+  .import{margin:12px 2px 0;}
+  .import summary{font-size:13px;font-weight:600;color:var(--blue);cursor:pointer;list-style:none;padding:4px 0;}
+  .import summary::-webkit-details-marker{display:none;}
+  .import .body{display:flex;flex-direction:column;gap:8px;margin-top:6px;}
+  .import .body .note{margin:0;}
+  .import textarea{font:inherit;font-size:14px;padding:9px 12px;background:var(--panel);border:1.5px solid var(--edge);border-radius:8px;color:var(--ink);resize:vertical;min-height:72px;}
+  .import textarea:focus{outline:none;border-color:var(--ink);}
+  .import input[type="file"]{font:inherit;font-size:13px;color:var(--graphite);}
+  .import .add{padding:10px 16px;align-self:flex-start;}
   .ver{position:fixed;right:10px;bottom:8px;font-size:11px;color:var(--graphite);opacity:.6;}
   :focus-visible{outline:2px solid var(--blue);outline-offset:2px;}
   [hidden]{display:none !important;}
@@ -123,6 +132,15 @@
     </div>
     <div class="board" id="vendors"></div>
     <p class="note">The people and companies who do the work. Tap a name or a field label to edit it; tap a phone, email or website to use it. Hold a row to delete it — a vendor a project still names cannot be deleted.</p>
+    <details class="import" id="vendor-import">
+      <summary>Import vendors from JSON</summary>
+      <div class="body">
+        <p class="note">A file or pasted text: a list of vendors, or a document with a <code>vendors</code> or <code>contacts</code> list. Extra fields become notes. A name already here is skipped.</p>
+        <input type="file" id="vendor-file" accept=".json,application/json" aria-label="Vendor JSON file">
+        <textarea id="vendor-paste" rows="4" placeholder="…or paste the JSON here" aria-label="Vendor JSON" autocomplete="off"></textarea>
+        <button class="add" id="vendor-import-go" type="button">Import</button>
+      </div>
+    </details>
   </section>
 
   <section id="view-completed" role="tabpanel" aria-labelledby="tab-completed" hidden>
@@ -133,7 +151,7 @@
   <p class="note" id="status"></p>
 </div>
 <!-- Keep in step with CACHE in sw.js — the visible proof of which build is running. -->
-<span class="ver">domus-v2</span>
+<span class="ver">domus-v3</span>
 
 <script>
 // State: one JSON document in localStorage, on one device. No backup, no sync.
@@ -378,6 +396,83 @@ function askDeleteVendor(id){
   return true;
 }
 
+// Import (D2i): a JSON file or pasted text — a bare list of vendor records,
+// or a document carrying one under `vendors` (the app's own shape) or
+// `contacts` (the seed exported from the household sheet). A record richer
+// than §8 keeps every extra field as a line of notes, nested ones indented,
+// so nothing the seed knew is lost; `status: active` and an organization
+// the name already says are left out. Names already in the list are
+// skipped, so importing twice is harmless. The seed file itself never
+// enters the repo — it is real data and this repo is public.
+const VENDOR_OWN = new Set(['id', 'display_name', 'name', 'category', 'phone', 'email', 'website', 'notes', 'created_at', 'updated_at']);
+const text = v => v == null ? '' : String(v).trim();
+const label = k => String(k).replace(/_/g, ' ');
+function fold(k, v, depth){
+  const pad = '  '.repeat(depth);
+  if (v == null || v === '') return [];
+  if (Array.isArray(v)){
+    const items = v.map(x => x && typeof x === 'object' ? JSON.stringify(x) : text(x)).filter(Boolean);
+    return items.length ? [`${pad}${label(k)}: ${items.join(', ')}`] : [];
+  }
+  if (typeof v === 'object'){
+    const inner = Object.entries(v).flatMap(([a, b]) => fold(a, b, depth + 1));
+    return inner.length ? [`${pad}${label(k)}:`, ...inner] : [];
+  }
+  return [`${pad}${label(k)}: ${text(v)}`];
+}
+function vendorFromRecord(r){
+  if (!r || typeof r !== 'object' || Array.isArray(r)) return null;
+  const services = Array.isArray(r.services) ? r.services.map(text).filter(Boolean).join(', ') : '';
+  const name = text(r.display_name) || text(r.name) || text(r.organization) || services;
+  if (!name) return null;
+  const lines = text(r.notes) ? [text(r.notes)] : [];
+  for (const [k, v] of Object.entries(r)){
+    if (VENDOR_OWN.has(k)) continue;
+    if (k === 'status' && text(v).toLowerCase() === 'active') continue;
+    if (k === 'organization' && name.toLowerCase().includes(text(v).toLowerCase())) continue;
+    if (k === 'services' && name === services) continue;
+    lines.push(...fold(k, v, 0));
+  }
+  const t = nowIso();
+  return { id: newId(), name, category: text(r.category), phone: text(r.phone), email: text(r.email), website: text(r.website), notes: lines.join('\n'), created_at: t, updated_at: t };
+}
+function importVendors(raw){
+  let parsed;
+  try { parsed = JSON.parse(raw); } catch (e) { $('status').textContent = 'That is not JSON.'; return 0; }
+  const list = Array.isArray(parsed) ? parsed
+    : parsed && typeof parsed === 'object' && Array.isArray(parsed.vendors) ? parsed.vendors
+    : parsed && typeof parsed === 'object' && Array.isArray(parsed.contacts) ? parsed.contacts
+    : null;
+  if (!list){ $('status').textContent = 'No vendors in that — expected a list, or a document with a vendors or contacts list.'; return 0; }
+  const have = new Set(state.vendors.map(v => v.name.toLowerCase()));
+  let added = 0, skipped = 0;
+  for (const r of list){
+    const v = vendorFromRecord(r);
+    if (!v) continue;
+    if (have.has(v.name.toLowerCase())){ skipped++; continue; }
+    have.add(v.name.toLowerCase()); state.vendors.push(v); added++;
+  }
+  render();
+  if (added) save();
+  $('status').textContent = added || skipped
+    ? `Imported ${added} vendor${added === 1 ? '' : 's'}${skipped ? `, ${skipped} already here` : ''}.`
+    : 'Nothing to import.';
+  return added;
+}
+function importFromPaste(){
+  const box = $('vendor-paste');
+  if (!box.value.trim()) return;
+  if (importVendors(box.value)) box.value = '';
+}
+function importFromFile(e){
+  const f = e.target.files && e.target.files[0];
+  if (!f) return;
+  const reader = new FileReader();
+  reader.onload = () => { importVendors(String(reader.result)); e.target.value = ''; };
+  reader.onerror = () => { $('status').textContent = 'Could not read that file.'; };
+  reader.readAsText(f);
+}
+
 function add(){
   const field = $('field');
   const title = field.value.trim();
@@ -533,6 +628,8 @@ document.addEventListener('pointermove', holdEnd);
 document.addEventListener('contextmenu', e => { if (e.target.closest('#backlog .row, #vendors .row')) e.preventDefault(); });
 $('vendor-add').addEventListener('click', addVendor);
 $('vendor-field').addEventListener('keydown', e => { if (e.key === 'Enter'){ e.preventDefault(); addVendor(); } });
+$('vendor-import-go').addEventListener('click', importFromPaste);
+$('vendor-file').addEventListener('change', importFromFile);
 
 document.addEventListener('click', e => {
   const tab = e.target.closest('[role="tab"]');

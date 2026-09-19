@@ -60,3 +60,9 @@ home_kg.key
 # kairos-domus is a standalone public repo AND a folder tracked inside kairos_v3
 # (the dual-tracked phone-app pattern). App-specific rules: none at the root —
 # the Capacitor shell keeps its own build/node_modules rules in native/.gitignore.
+
+# The vendor seed (docs/*seed*.json — real contacts exported from the
+# household sheet) is imported on the phone through the Vendors tab and
+# never committed: this repo is public. Generated 2026-09-19; the rule
+# keeps any later export out too.
+*seed*.json

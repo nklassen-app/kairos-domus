@@ -420,3 +420,89 @@ test('vendors survive a reload alongside projects and the budget', () => {
   assert.deepEqual(again.titles('vendors'), ['Ace']);
   assert.deepEqual(again.stored(), first.stored());
 });
+
+/* ---- import (D2i) ---- */
+
+// A seed-shaped document, made up from the seed's schema (never from a real
+// one): richer records than §8, a nameless pending one, an inactive list.
+const SEED = {
+  schema_version: 1,
+  contacts: [
+    { id: 'acme', display_name: 'Acme Electric (electrician)', name: 'Pat Example', organization: 'Acme Electric', category: 'home-maintenance',
+      services: ['Electrician'], phone: '+1 555-010-2030', phone_alt: { label: 'Office', number: '+1 555-010-2031' }, email: null,
+      website: 'https://acme.example.com', address: '1 Main St', status: 'active',
+      subscription: { plan: 'Care plan', benefits: ['10% off', 'Priority'], scheduling: 'Call to book.' }, notes: 'Open quote.' },
+    { id: 'tbd', display_name: null, name: null, organization: null, category: 'home-maintenance', services: ['Landscaping'], status: 'pending', notes: null },
+    { id: 'tutor', display_name: 'Sam Example (tutor)', name: 'Sam Example', nickname: 'Sammy', category: 'family', services: ['Tutor'], email: 'sam@example.com', status: 'active' },
+  ],
+  inactive: [{ organization: 'Old Lawn Co', services: ['Lawn'], status: 'inactive', display_name: 'Old Lawn Co' }],
+};
+
+function importPaste(h, textOrObj) {
+  const box = h.w.document.getElementById('vendor-paste');
+  box.value = typeof textOrObj === 'string' ? textOrObj : JSON.stringify(textOrObj);
+  h.click('#vendor-import-go');
+}
+
+test('a seed document imports its contacts: §8 fields mapped, the rest folded into notes, inactive left out', () => {
+  const h = boot();
+  h.click('#tab-vendors');
+  importPaste(h, SEED);
+  assert.equal(h.$('#status').textContent, 'Imported 3 vendors.');
+  assert.deepEqual(h.titles('vendors'), ['Acme Electric (electrician)', 'Landscaping', 'Sam Example (tutor)']);
+  assert.equal(h.$('#tab-vendors').textContent, 'Vendors · 3');
+  const acme = h.stored().vendors.find(v => v.name.startsWith('Acme'));
+  assert.deepEqual([acme.category, acme.phone, acme.email, acme.website], ['home-maintenance', '+1 555-010-2030', '', 'https://acme.example.com']);
+  assert.equal(acme.notes, [
+    'Open quote.',                       // the free text first
+    'services: Electrician',             // organization skipped: the name already says it; status active skipped
+    'phone alt:', '  label: Office', '  number: +1 555-010-2031',
+    'address: 1 Main St',
+    'subscription:', '  plan: Care plan', '  benefits: 10% off, Priority', '  scheduling: Call to book.',
+  ].join('\n'));
+  assert.equal(acme.created_at, '2026-09-19T10:00:00.000Z');
+  assert.ok(h.$('#vendors a[href="tel:+15550102030"]'));
+  const tbd = h.stored().vendors.find(v => v.name === 'Landscaping');   // named after its services, so they are not repeated
+  assert.equal(tbd.notes, 'status: pending');
+  const tutor = h.stored().vendors.find(v => v.name.startsWith('Sam'));
+  assert.equal(tutor.notes, 'nickname: Sammy\nservices: Tutor');
+  assert.equal(h.$('#vendor-paste').value, '');
+});
+
+test('importing again skips names already here; the app\'s own shape and a bare list import too', () => {
+  const h = boot({ seed: { [KEY]: docV([vendor({ id: 'v', name: 'acme electric (ELECTRICIAN)' })]) } });
+  importPaste(h, SEED);
+  assert.equal(h.$('#status').textContent, 'Imported 2 vendors, 1 already here.');
+  importPaste(h, SEED);
+  assert.equal(h.$('#status').textContent, 'Imported 0 vendors, 3 already here.');
+  assert.equal(h.stored().vendors.length, 3);
+  importPaste(h, { vendors: [vendor({ name: 'Zed Plumbing', phone: '555', notes: 'kept as is' })] });
+  assert.equal(h.stored().vendors.find(v => v.name === 'Zed Plumbing').notes, 'kept as is');
+  importPaste(h, [{ name: 'Bare Co' }, { name: '' }, 'junk', null]);
+  assert.equal(h.$('#status').textContent, 'Imported 1 vendor.');
+  assert.deepEqual(h.titles('vendors'), ['acme electric (ELECTRICIAN)', 'Bare Co', 'Landscaping', 'Sam Example (tutor)', 'Zed Plumbing']);
+});
+
+test('bad input imports nothing and says so', () => {
+  const h = boot();
+  importPaste(h, '{{{');
+  assert.equal(h.$('#status').textContent, 'That is not JSON.');
+  assert.equal(h.$('#vendor-paste').value, '{{{');   // kept, so it can be fixed
+  importPaste(h, { budget: 1 });
+  assert.match(h.$('#status').textContent, /No vendors in that/);
+  importPaste(h, []);
+  assert.equal(h.$('#status').textContent, 'Nothing to import.');
+  importPaste(h, '   ');
+  assert.equal(h.stored(), null);
+});
+
+test('a chosen file imports the same way', async () => {
+  const h = boot();
+  const input = h.$('#vendor-file');
+  const file = new h.w.File([JSON.stringify(SEED)], 'contacts.json', { type: 'application/json' });
+  Object.defineProperty(input, 'files', { value: [file], configurable: true });
+  input.dispatchEvent(new h.w.Event('change', { bubbles: true }));
+  await new Promise(r => setTimeout(r, 50));
+  assert.equal(h.$('#status').textContent, 'Imported 3 vendors.');
+  assert.equal(h.stored().vendors.length, 3);
+});
