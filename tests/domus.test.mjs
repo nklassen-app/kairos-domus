@@ -586,3 +586,96 @@ test('a vendor the seed never knew shows as ? and the links survive a reload', (
   const again = boot({ seed: { [KEY]: first.stored() } });
   assert.deepEqual(again.stored().projects[0].vendor_ids, ['ace', 'gone']);
 });
+
+/* ---- the vendor page (D6) ---- */
+
+const PAGE_DOC = () => docV(
+  [vendor({ id: 'ace', name: 'Ace Electric', category: 'Electrician', phone: '555-0100' }), vendor({ id: 'idle', name: 'Idle Co' })],
+  [
+    project({ id: 'a', title: 'Panel upgrade', status: 'activated', effort: 'L', estimated_cost: 2400, vendor_ids: ['ace'] }),
+    project({ id: 'b', title: 'Outlet in garage', effort: 'S', estimated_cost: 150, vendor_ids: ['ace'] }),
+    project({ id: 'b2', title: 'Porch light', priority_order: 2, vendor_ids: ['ace'] }),
+    project({ id: 'c', title: 'Fan install', status: 'completed', completed_at: '2026-03-01T10:00:00.000Z', estimated_cost: 300, vendor_ids: ['ace'] }),
+    project({ id: 'd', title: 'Old rewiring', status: 'completed', completed_at: '2025-06-01T10:00:00.000Z', estimated_cost: 1000, vendor_ids: ['ace'] }),
+    project({ id: 'x', title: 'Not theirs', vendor_ids: [] }),
+  ]);
+const pageText = (h, sel) => [...h.w.document.querySelectorAll(sel)].map(e => e.textContent.trim());
+
+test('the chip on a vendor row opens the page: three groups, completed collapsed by year, no tabs or budget; back returns', () => {
+  const h = boot({ seed: { [KEY]: PAGE_DOC() } });
+  h.click('#tab-vendors');
+  assert.deepEqual(pageText(h, '#vendors [data-open]'), ['5 projects', 'no projects']);
+  h.click('[data-open="ace"]');
+  assert.equal(h.$('#view-vendor').hidden, false);
+  assert.equal(h.$('#view-vendors').hidden, true);
+  assert.equal(h.$('.tabs').hidden, true);
+  assert.equal(h.$('#budget').hidden, true);
+  assert.equal(h.$('#vendor-page h2').textContent, 'Ace Electric');
+  assert.equal(h.$('#vendor-page .sub').textContent, 'Electrician · 555-0100 · Sep 19, 2026');
+  assert.deepEqual(pageText(h, '#vendor-page h3'), ['Active · 1', 'Backlog · 2', 'Completed · 2']);
+  assert.deepEqual(pageText(h, '#vendor-page li .t'), ['Panel upgrade', 'Outlet in garage', 'Porch light', 'Fan install', 'Old rewiring']);
+  assert.deepEqual(pageText(h, '#vendor-page li .c'), ['$2,400', '$150', '—', '$300', '$1,000']);
+  assert.deepEqual(pageText(h, '#vendor-page h4'), ['2026', '2025']);
+  assert.equal(h.$('#vendor-completed').open, false);
+  assert.deepEqual(pageText(h, '#vendor-totals span'), ['active $2,400', 'backlog $150', 'completed 2026 $300', 'completed 2025 $1,000']);
+  assert.equal(h.$('#vendor-page button, #vendor-page .chip'), null, 'the page itself has nothing to tap');
+  h.click('#vendor-back');
+  assert.equal(h.$('#view-vendor').hidden, true);
+  assert.equal(h.$('#view-vendors').hidden, false);
+  assert.equal(h.$('.tabs').hidden, false);
+  assert.equal(h.$('#budget').hidden, false);
+  h.click('[data-open="idle"]');
+  assert.deepEqual(pageText(h, '#vendor-page .none'), ['Nothing active.', 'Nothing waiting.', 'Nothing completed yet.']);
+});
+
+test('the costs toggle hides every cost and the totals; the state holds across a re-render', () => {
+  const h = boot({ seed: { [KEY]: PAGE_DOC() } });
+  h.click('#tab-vendors'); h.click('[data-open="ace"]');
+  h.click('#vendor-costs');
+  assert.equal(h.$('#vendor-page .c'), null);
+  assert.equal(h.$('#vendor-totals'), null);
+  assert.equal(h.$('#vendor-costs').getAttribute('aria-pressed'), 'false');
+  h.click('#vendor-back'); h.click('[data-open="ace"]');
+  assert.equal(h.$('#vendor-page .c'), null, 'still hidden');
+  h.click('#vendor-costs');
+  assert.equal(pageText(h, '#vendor-page li .c').length, 5);
+});
+
+test('Copy as text copies what is on screen: costs only when shown, completed only when expanded', async () => {
+  const h = boot({ seed: { [KEY]: PAGE_DOC() } });
+  let copied = null;
+  Object.defineProperty(h.w.navigator, 'clipboard', { value: { writeText: t => { copied = t; return Promise.resolve(); } }, configurable: true });
+  h.click('#tab-vendors'); h.click('[data-open="ace"]');
+  h.click('#vendor-copy');
+  await new Promise(r => setTimeout(r, 0));
+  assert.equal(copied, [
+    'Ace Electric — Sep 19, 2026', '',
+    'Active', '- Panel upgrade (L) · $2,400', '',
+    'Backlog', '- Outlet in garage (S) · $150', '- Porch light · —', '',
+  ].join('\n'));
+  assert.equal(h.$('#status').textContent, 'Copied.');
+  h.click('#vendor-costs');
+  h.$('#vendor-completed').open = true;
+  h.$('#vendor-completed').dispatchEvent(new h.w.Event('toggle'));
+  h.click('#vendor-copy');
+  await new Promise(r => setTimeout(r, 0));
+  assert.equal(copied, [
+    'Ace Electric — Sep 19, 2026', '',
+    'Active', '- Panel upgrade (L)', '',
+    'Backlog', '- Outlet in garage (S)', '- Porch light', '',
+    'Completed 2026', '- Fan install', '',
+    'Completed 2025', '- Old rewiring', '',
+  ].join('\n'));
+  h.click('[data-open="idle"]');
+  h.click('#vendor-copy');
+  await new Promise(r => setTimeout(r, 0));
+  assert.match(copied, /Active\n  \(none\)\n\nBacklog\n  \(none\)\n$/);
+});
+
+test('a page whose vendor is deleted falls back to the Vendors tab', () => {
+  const h = boot({ seed: { [KEY]: PAGE_DOC() } });
+  h.click('#tab-vendors'); h.click('[data-open="idle"]');
+  assert.equal(h.w.askDeleteVendor('idle'), true);
+  assert.equal(h.$('#view-vendor').hidden, true);
+  assert.equal(h.$('#view-vendors').hidden, false);
+});

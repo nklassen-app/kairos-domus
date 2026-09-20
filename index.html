@@ -87,6 +87,29 @@
   .vendor .field input:focus{outline:none;}
   .vendor .notes{font-size:13px;color:var(--graphite);margin-top:2px;white-space:pre-wrap;}
   .note{font-size:13px;color:var(--graphite);margin:10px 2px 0;}
+  .vendor .open{margin-left:auto;}
+
+  /* the vendor page (D6): read-only, clean enough that a screenshot is the share */
+  .page-bar{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:12px;}
+  .back{font:inherit;font-size:14px;font-weight:600;color:var(--blue);background:none;border:none;padding:6px 0;cursor:pointer;}
+  .page-bar .tools{display:flex;gap:8px;align-items:center;}
+  .page{border:1.5px solid var(--edge);border-radius:10px;background:var(--panel);padding:14px 16px 12px;font-variant-numeric:tabular-nums;}
+  .page h2{font-size:19px;font-weight:650;margin:0 0 2px;}
+  .page .sub{font-size:13px;color:var(--graphite);}
+  .page h3{font-size:12px;font-weight:650;color:var(--graphite);text-transform:uppercase;letter-spacing:.4px;margin:16px 0 2px;}
+  .page summary{cursor:pointer;list-style:none;}
+  .page summary::-webkit-details-marker{display:none;}
+  .page summary h3::before{content:'▸ ';}
+  .page details[open] summary h3::before{content:'▾ ';}
+  .page h4{font-size:13px;font-weight:600;color:var(--graphite);margin:8px 0 0;}
+  .page ul{list-style:none;margin:0;padding:0;}
+  .page li{display:flex;gap:10px;align-items:baseline;padding:6px 0;border-top:1px solid #ecefea;font-size:15px;}
+  .page li .t{flex:1;min-width:0;word-break:break-word;}
+  .page li .e,.page li .c{flex:none;font-size:13px;color:var(--graphite);}
+  .page li .c{min-width:6ch;text-align:right;}
+  .page .none{font-size:14px;color:#adb2ac;padding:4px 0;}
+  .page .totals{display:flex;gap:14px;flex-wrap:wrap;margin-top:14px;padding-top:10px;border-top:1.5px solid var(--edge);font-size:13px;color:var(--graphite);}
+  .page .totals b{font-weight:650;color:var(--ink);}
   .import{margin:12px 2px 0;}
   .import summary{font-size:13px;font-weight:600;color:var(--blue);cursor:pointer;list-style:none;padding:4px 0;}
   .import summary::-webkit-details-marker{display:none;}
@@ -157,10 +180,22 @@
     <p class="note">Completed projects are kept. Nothing here is ever deleted.</p>
   </section>
 
+  <section id="view-vendor" role="region" aria-label="Vendor page" hidden>
+    <div class="page-bar">
+      <button class="back" id="vendor-back" type="button">‹ Vendors</button>
+      <span class="tools">
+        <button class="chip set" id="vendor-costs" type="button" aria-pressed="true">costs</button>
+        <button class="act" id="vendor-copy" type="button">Copy as text</button>
+      </span>
+    </div>
+    <div class="page" id="vendor-page"></div>
+    <p class="note">Everything that names this vendor. Hide the costs before a screenshot; Copy as text copies what is on screen.</p>
+  </section>
+
   <p class="note" id="status"></p>
 </div>
 <!-- Keep in step with CACHE in sw.js — the visible proof of which build is running. -->
-<span class="ver">domus-v4</span>
+<span class="ver">domus-v5</span>
 
 <script>
 // State: one JSON document in localStorage, on one device. No backup, no sync.
@@ -172,7 +207,10 @@ const KEY = 'domus:v1';
 const EFFORTS = [null, 'S', 'M', 'L'];
 const VENDOR_FIELDS = ['category', 'phone', 'email', 'website', 'notes'];
 let state = { projects: [], vendors: [], budget: { year: new Date().getFullYear(), amount: null, currency: 'USD' } };
-let view = null;   // 'backlog' | 'active' | 'vendors' | 'completed'; null = not chosen yet
+let view = null;   // 'backlog' | 'active' | 'vendors' | 'completed' | 'vendor' (one vendor's page); null = not chosen yet
+let openVendor = null;   // the vendor whose page is open while view === 'vendor'
+let showCosts = true;    // the vendor page's costs toggle — off for a screenshot; not stored
+let completedOpen = false;   // the vendor page's Completed group, collapsed by default
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -312,6 +350,12 @@ function setVendor(p, fromId, choice){
 }
 
 function render(){
+  if (view === 'vendor' && !findVendor(openVendor)) view = 'vendors';   // the vendor went away under the page
+  const page = view === 'vendor' ? findVendor(openVendor) : null;
+  $('budget').hidden = !!page;
+  document.querySelector('.tabs').hidden = !!page;
+  $('view-vendor').hidden = !page;
+  if (page) renderVendorPage(page);
   renderBudget();
   renderIntakeVendor();
   const bl = backlog(), ac = active(), co = completed();
@@ -369,6 +413,7 @@ function render(){
           <div class="fields">${VENDOR_FIELDS.filter(f => f !== 'notes').map(f => vendorField(v, f)).join('')}</div>
           ${v.notes ? `<div class="notes" data-vendor-field="${v.id}" data-field="notes">${esc(v.notes)}</div>` : vendorField(v, 'notes')}
         </div>
+        <button class="act open" data-open="${v.id}" aria-label="Open ${esc(v.name)}">${projectCount(v.id)}</button>
       </div>`).join('');
   }
 
@@ -396,6 +441,63 @@ function vendorField(v, f){
 }
 
 function show(v){ view = v; render(); }
+
+// The vendor page (D6): everything that names one vendor — Active,
+// Backlog, Completed collapsed at the bottom by year — read-only and
+// without the budget line, so a screenshot can go to the vendor. Costs
+// show for N.'s own review (totals per group and per year) and hide for
+// the share; Copy as text copies exactly what is on screen.
+const names = id => p => (p.vendor_ids || []).includes(id);
+function projectCount(id){
+  const n = state.projects.filter(names(id)).length;
+  return n ? `${n} project${n === 1 ? '' : 's'}` : 'no projects';
+}
+const sumCost = list => list.reduce((s, p) => s + (p.estimated_cost || 0), 0);
+function vendorGroups(id){
+  const co = completed().filter(names(id));
+  const years = [...new Set(co.map(p => yearOf(p.completed_at)))].sort((a, b) => b - a);
+  return { ac: active().filter(names(id)), bl: backlog().filter(names(id)), co, years, inYear: y => co.filter(p => yearOf(p.completed_at) === y) };
+}
+function renderVendorPage(v){
+  const g = vendorGroups(v.id);
+  const line = p => `<li><span class="t">${esc(p.title)}</span>${p.effort ? `<span class="e">${p.effort}</span>` : ''}${showCosts ? `<span class="c">${money(p.estimated_cost)}</span>` : ''}</li>`;
+  const list = (items, empty) => items.length ? `<ul>${items.map(line).join('')}</ul>` : `<div class="none">${empty}</div>`;
+  const sub = [v.category, v.phone, dateOf(nowIso())].filter(Boolean).join(' · ');
+  const totals = showCosts ? `<div class="totals" id="vendor-totals"><span>active <b>${money(sumCost(g.ac))}</b></span><span>backlog <b>${money(sumCost(g.bl))}</b></span>${g.years.map(y => `<span>completed ${y} <b>${money(sumCost(g.inYear(y)))}</b></span>`).join('')}</div>` : '';
+  $('vendor-page').innerHTML = `
+    <h2>${esc(v.name)}</h2>
+    <div class="sub">${esc(sub)}</div>
+    <h3>Active · ${g.ac.length}</h3>${list(g.ac, 'Nothing active.')}
+    <h3>Backlog · ${g.bl.length}</h3>${list(g.bl, 'Nothing waiting.')}
+    <details id="vendor-completed" ${completedOpen ? 'open' : ''}><summary><h3>Completed · ${g.co.length}</h3></summary>
+      ${g.co.length ? g.years.map(y => `<h4>${y}</h4>${list(g.inYear(y), '')}`).join('') : '<div class="none">Nothing completed yet.</div>'}
+    </details>
+    ${totals}`;
+  $('vendor-costs').className = showCosts ? 'chip set' : 'chip';
+  $('vendor-costs').setAttribute('aria-pressed', String(showCosts));
+}
+function vendorText(id){
+  const v = findVendor(id);
+  const g = vendorGroups(id);
+  const out = [`${v.name} — ${dateOf(nowIso())}`];
+  const put = (title, items) => {
+    out.push('', title);
+    if (!items.length) out.push('  (none)');
+    for (const p of items) out.push(`- ${p.title}${p.effort ? ` (${p.effort})` : ''}${showCosts ? ` · ${money(p.estimated_cost)}` : ''}`);
+  };
+  put('Active', g.ac); put('Backlog', g.bl);
+  if (completedOpen) for (const y of g.years) put(`Completed ${y}`, g.inYear(y));
+  return out.join('\n') + '\n';
+}
+function copyVendor(){
+  const text = vendorText(openVendor);
+  const done = () => { $('status').textContent = 'Copied.'; };
+  const fail = () => { $('status').textContent = 'Could not copy — select the text and copy it by hand.'; };
+  if (navigator.clipboard && navigator.clipboard.writeText){ navigator.clipboard.writeText(text).then(done, fail); return; }
+  const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select();
+  let ok = false; try { ok = document.execCommand && document.execCommand('copy'); } catch (e) {}
+  ta.remove(); (ok ? done : fail)();
+}
 
 function addVendor(){
   const field = $('vendor-field');
@@ -689,6 +791,10 @@ document.addEventListener('pointercancel', holdEnd);
 document.addEventListener('pointermove', holdEnd);
 document.addEventListener('contextmenu', e => { if (e.target.closest('#backlog .row, #vendors .row')) e.preventDefault(); });
 $('vendor-add').addEventListener('click', addVendor);
+$('vendor-back').addEventListener('click', () => show('vendors'));
+$('vendor-costs').addEventListener('click', () => { showCosts = !showCosts; render(); });
+$('vendor-copy').addEventListener('click', copyVendor);
+document.addEventListener('toggle', e => { if (e.target.id === 'vendor-completed') completedOpen = e.target.open; }, true);
 $('field-vendor').addEventListener('change', e => {
   if (e.target.value !== '__new') return;
   const v = newVendorByPrompt();
@@ -712,6 +818,7 @@ document.addEventListener('click', e => {
   const cost = e.target.closest('[data-cost]');    if (cost && !cost.querySelector('input')){ startCost(cost); return; }
   const bud = e.target.closest('[data-budget]');   if (bud){ startBudget(bud); return; }
   const pick = e.target.closest('[data-pick]');    if (pick){ startPick(pick); return; }
+  const open = e.target.closest('[data-open]');    if (open){ openVendor = open.dataset.open; view = 'vendor'; render(); return; }
   const ven = e.target.closest('[data-vendor-name], [data-vendor-field]'); if (ven){ startVendorEdit(ven); return; }
   const edit = e.target.closest('[data-edit]');    if (edit) startEdit(edit);
 });

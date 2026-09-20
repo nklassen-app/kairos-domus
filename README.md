@@ -43,9 +43,12 @@ backlog*.
    every Backlog or Active row carries the vendors as chips: tap a chip to
    change or remove that vendor, the dashed chip to add one; both pickers
    offer "+ New vendor…", which asks for a name and creates the vendor on
-   the spot. Completed rows show their chips read-only. (The monthly list
-   by vendor is the second half of that story.) The list can also be
-   **imported** from
+   the spot. Completed rows show their chips read-only. The "N projects"
+   button on a vendor row opens the **vendor page**: everything that names
+   the vendor — Active, Backlog, Completed collapsed by year — read-only
+   and without the budget line, so a screenshot can go to the vendor. The
+   costs toggle hides costs and totals for that screenshot; Copy as text
+   copies what is on screen. The list can also be **imported** from
    JSON on the Vendors tab (a file or pasted text): a bare list, the app's
    own `vendors`, or the household seed's `contacts` — extra fields fold
    into notes, a name already present is skipped. The seed is real contact
