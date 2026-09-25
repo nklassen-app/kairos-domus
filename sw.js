@@ -1,4 +1,4 @@
-const CACHE = 'domus-v5';   // D6: the vendor page   // bump on EVERY content change, and the .ver marker in index.html with it
+const CACHE = 'domus-v6';   // D7: months instead of position   // bump on EVERY content change, and the .ver marker in index.html with it
 const ASSETS = ['.', 'index.html', 'manifest.webmanifest', 'icon.svg'];
 
 self.addEventListener('install', e => {

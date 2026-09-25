@@ -49,7 +49,6 @@
   .board.empty{padding:22px 16px;color:var(--graphite);font-size:14px;border-style:dashed;}
   .row{display:flex;align-items:center;gap:10px;padding:10px 12px;user-select:none;-webkit-user-select:none;}
   .row + .row{border-top:1px solid #ecefea;}
-  .num{flex:none;width:2ch;text-align:right;font-size:13px;color:var(--graphite);font-variant-numeric:tabular-nums;}
   .main{flex:1;min-width:0;}
   .title{font-size:16px;word-break:break-word;cursor:text;}
   .meta{display:flex;gap:8px;margin-top:4px;align-items:center;font-size:13px;color:var(--graphite);font-variant-numeric:tabular-nums;}
@@ -69,9 +68,12 @@
   .edit{flex:1;min-width:0;font:inherit;font-size:16px;padding:0;margin:0;border:none;border-bottom:1.5px solid var(--ink);background:transparent;color:var(--ink);border-radius:0;width:100%;}
   .edit:focus{outline:none;}
 
-  .order{display:flex;flex-direction:column;gap:2px;flex:none;}
-  .order button{font:inherit;font-size:12px;line-height:1;width:32px;height:22px;border:1.5px solid var(--edge);border-radius:5px;background:var(--panel);color:var(--graphite);cursor:pointer;padding:0;}
-  .order button:disabled{color:#d3d6d1;cursor:default;}
+  /* the backlog's month groups (D7): position is gone, the target month groups */
+  .ghead{display:flex;align-items:baseline;gap:8px;padding:12px 12px 4px;font-size:12px;font-weight:650;color:var(--graphite);text-transform:uppercase;letter-spacing:.4px;}
+  .ghead .range{font-weight:500;text-transform:none;letter-spacing:0;}
+  .ghead.empty{color:#c4c8c2;}
+  .row + .ghead{border-top:1px solid #ecefea;margin-top:2px;}
+  .chip.month{min-width:44px;white-space:nowrap;}
   .act{flex:none;border:1.5px solid var(--blue);color:var(--blue);background:var(--panel);font:inherit;font-size:13px;font-weight:600;border-radius:6px;padding:7px 11px;cursor:pointer;}
   .act.done{border-color:var(--green);color:var(--green);}
   .completed .title{color:var(--graphite);}
@@ -149,7 +151,7 @@
       <select class="field" id="field-vendor" aria-label="Vendor for the new project"></select>
     </div>
     <div class="board" id="backlog"></div>
-    <p class="note">Order is priority. Tap a title or a cost to edit it, the effort chip to cycle S · M · L, a vendor chip to change it and the dashed one to add one. Hold a row to delete it.</p>
+    <p class="note">The month is the priority: tap the month chip to plan a project for a month, or later. Tap a title or a cost to edit it, the effort chip to cycle S · M · L, a vendor chip to change it and the dashed one to add one. Hold a row to delete it.</p>
   </section>
 
   <section id="view-active" role="tabpanel" aria-labelledby="tab-active" hidden>
@@ -195,7 +197,7 @@
   <p class="note" id="status"></p>
 </div>
 <!-- Keep in step with CACHE in sw.js — the visible proof of which build is running. -->
-<span class="ver">domus-v5</span>
+<span class="ver">domus-v6</span>
 
 <script>
 // State: one JSON document in localStorage, on one device. No backup, no sync.
@@ -216,9 +218,14 @@ const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const newId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 const nowIso = () => new Date().toISOString();
-const byOrder = (a, b) => a.priority_order - b.priority_order;
-const backlog = () => state.projects.filter(p => p.status === 'backlog').sort(byOrder);
-const active = () => state.projects.filter(p => p.status === 'activated' || p.status === 'scheduled' || p.status === 'in_progress').sort(byOrder);
+// Months instead of position (D7): a project's priority is its target month
+// ('YYYY-MM', or null for later). Earlier months first, no month last, and
+// within a month the newest last. priority_order stays in old records but
+// nothing reads it.
+const cmp = (x, y) => x < y ? -1 : x > y ? 1 : 0;
+const byMonth = (a, b) => cmp(a.target_month || '~', b.target_month || '~') || cmp(a.created_at || '', b.created_at || '');
+const backlog = () => state.projects.filter(p => p.status === 'backlog').sort(byMonth);
+const active = () => state.projects.filter(p => p.status === 'activated' || p.status === 'scheduled' || p.status === 'in_progress').sort(byMonth);
 const completed = () => state.projects.filter(p => p.status === 'completed').sort((a, b) => (b.completed_at || '').localeCompare(a.completed_at || ''));
 const find = id => state.projects.find(p => p.id === id);
 const vendors = () => state.vendors.slice().sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
@@ -237,6 +244,35 @@ function parseMoney(text){
   const n = Number(t);
   return Number.isFinite(n) && n >= 0 ? Math.round(n * 100) / 100 : undefined;   // undefined = not a number
 }
+// Months are counted as one integer (year * 12 + month index) so the groups
+// are simple comparisons, computed against today on every render — nothing
+// is stored but the month itself, so nothing needs moving on the first.
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const nowMonth = () => { const d = new Date(); return d.getFullYear() * 12 + d.getMonth(); };
+const monthIdx = ym => Number(ym.slice(0, 4)) * 12 + Number(ym.slice(5, 7)) - 1;
+const ymOf = i => `${Math.floor(i / 12)}-${String(i % 12 + 1).padStart(2, '0')}`;
+const monthShort = i => MONTHS[i % 12] + (Math.floor(i / 12) === Math.floor(nowMonth() / 12) ? '' : ` '${String(Math.floor(i / 12)).slice(2)}`);
+const monthLong = i => `${new Date(Math.floor(i / 12), i % 12, 1).toLocaleDateString('en-US', { month: 'long' })} ${Math.floor(i / 12)}`;
+// The four groups: this month (a month already past stays here — it is
+// overdue, not forgotten) · next month · next quarter, meaning the months
+// after next month through the end of the next calendar quarter (so no
+// month falls between the groups) · later (no month, or beyond that).
+const GROUPS = ['this', 'next', 'quarter', 'later'];
+function groupOf(p){
+  if (!p.target_month) return 'later';
+  const now = nowMonth(), i = monthIdx(p.target_month);
+  if (i <= now) return 'this';
+  if (i === now + 1) return 'next';
+  return i <= now - now % 3 + 5 ? 'quarter' : 'later';
+}
+function groupHead(g){
+  const now = nowMonth(), end = now - now % 3 + 5;
+  if (g === 'this') return ['This month', monthShort(now)];
+  if (g === 'next') return ['Next month', monthShort(now + 1)];
+  if (g === 'quarter') return ['Next quarter', now + 2 === end ? monthShort(end) : `${monthShort(now + 2)} – ${monthShort(end)}`];
+  return ['Later', ''];
+}
+
 function dateOf(iso){
   const d = new Date(iso);
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
@@ -271,6 +307,7 @@ function load(){
   if (!state.budget || typeof state.budget !== 'object') state.budget = { year: new Date().getFullYear(), amount: null, currency: 'USD' };
   if (!Array.isArray(state.projects)) state.projects = [];
   if (!Array.isArray(state.vendors)) state.vendors = [];   // documents written before D2a have none
+  for (const p of state.projects) if (!('target_month' in p)) p.target_month = null;   // records written before D7
   view = active().length ? 'active' : 'backlog';   // Active is the primary screen once anything is active
   render();
 }
@@ -302,7 +339,33 @@ function rowMeta(p, editable){
   const cost = editable
     ? `<span class="cost ${p.estimated_cost == null ? 'none' : ''}" data-cost="${p.id}" role="button" tabindex="0">${p.estimated_cost == null ? 'cost?' : money(p.estimated_cost)}</span>`
     : `<span class="cost ${p.estimated_cost == null ? 'none' : ''}">${money(p.estimated_cost)}</span>`;
-  return `<div class="meta">${effort}${cost}${vendorChips(p, editable)}${p.completed_at ? `<span class="when">${dateOf(p.completed_at)}</span>` : ''}</div>`;
+  return `<div class="meta">${editable ? monthChip(p) : ''}${effort}${cost}${vendorChips(p, editable)}${p.completed_at ? `<span class="when">${dateOf(p.completed_at)}</span>` : ''}</div>`;
+}
+
+// The month chip (D7): tap it for a picker of this month and the eleven
+// after it, plus "later". It commits on choice, like the vendor picker, and
+// a month already past stays offered while it is the project's.
+function monthChip(p){
+  const label = p.target_month ? monthShort(monthIdx(p.target_month)) : 'later';
+  return `<button class="chip month ${p.target_month ? 'set' : ''}" data-month="${p.id}" aria-label="Target month">${label}</button>`;
+}
+function startMonth(el){
+  const p = find(el.dataset.month);
+  const now = nowMonth();
+  const months = Array.from({ length: 12 }, (_, k) => now + k);
+  if (p.target_month && !months.includes(monthIdx(p.target_month))) months.unshift(monthIdx(p.target_month));
+  const sel = document.createElement('select');
+  sel.className = 'picker';
+  sel.setAttribute('aria-label', 'Target month');
+  sel.innerHTML = `<option value="">Later (no month)</option>` + months.map(i => `<option value="${ymOf(i)}">${monthLong(i)}</option>`).join('');
+  sel.value = p.target_month || '';
+  sel.addEventListener('change', () => { setMonth(p, sel.value || null); render(); });
+  sel.addEventListener('keydown', e => { if (e.key === 'Escape'){ e.preventDefault(); render(); } });
+  el.replaceWith(sel); sel.focus();
+}
+function setMonth(p, ym){
+  if ((p.target_month || null) === ym) return;
+  p.target_month = ym; touch(p); save();
 }
 
 // Vendors on a project (D2b): zero, one or several, as chips on the row.
@@ -373,19 +436,19 @@ function render(){
   if (!bl.length){ b.className = 'board empty'; b.textContent = 'Nothing waiting. Add what needs to get done.'; }
   else {
     b.className = 'board';
-    b.innerHTML = bl.map((p, i) => `
+    b.innerHTML = GROUPS.map(g => {
+      const items = bl.filter(p => groupOf(p) === g);
+      const [head, range] = groupHead(g);
+      return `<div class="ghead ${items.length ? '' : 'empty'}" data-group="${g}">${head}${range ? `<span class="range">${range}</span>` : ''}</div>` +
+        items.map(p => `
       <div class="row" data-row="${p.id}">
-        <span class="num">${i + 1}</span>
         <div class="main">
           <div class="title" data-edit="${p.id}">${esc(p.title)}</div>
           ${rowMeta(p, true)}
         </div>
-        <div class="order">
-          <button data-up="${p.id}" aria-label="Move up" ${i === 0 ? 'disabled' : ''}>▲</button>
-          <button data-down="${p.id}" aria-label="Move down" ${i === bl.length - 1 ? 'disabled' : ''}>▼</button>
-        </div>
         <button class="act" data-activate="${p.id}">Activate</button>
       </div>`).join('');
+    }).join('');
   }
 
   const a = $('active');
@@ -638,11 +701,10 @@ function add(){
   const field = $('field');
   const title = field.value.trim();
   if (!title) return;
-  const last = backlog().reduce((m, p) => Math.max(m, p.priority_order), 0);
   const t = nowIso();
   const chosen = $('field-vendor').value;
   state.projects.push({
-    id: newId(), title, description: '', priority_order: last + 1,
+    id: newId(), title, description: '', priority_order: null, target_month: null,
     effort: null, estimated_cost: null, status: 'backlog',
     assignee_id: null, vendor_ids: chosen && findVendor(chosen) ? [chosen] : [], dependency_ids: [],
     scheduled_start: null, scheduled_duration_minutes: null, calendar_event_id: null,
@@ -654,24 +716,10 @@ function add(){
 
 function touch(p){ p.updated_at = nowIso(); }
 
-// Reorder within the backlog: swap with the neighbour, then renumber 1..n so
-// priority_order is always dense. Active projects keep the order they had.
-function move(id, dir){
-  const bl = backlog();
-  const i = bl.findIndex(p => p.id === id);
-  const j = i + dir;
-  if (i < 0 || j < 0 || j >= bl.length) return;
-  [bl[i], bl[j]] = [bl[j], bl[i]];
-  bl.forEach((p, k) => { p.priority_order = k + 1; });
-  touch(find(id));
-  render(); save();
-}
-
 function activate(id){
   const p = find(id);
   if (!p || p.status !== 'backlog') return;
   p.status = 'activated'; touch(p);
-  backlog().forEach((q, k) => { q.priority_order = k + 1; });
   render(); save();
 }
 
@@ -768,7 +816,6 @@ function askDelete(id){
   if (!p || p.status !== 'backlog') return false;
   if (!window.confirm(`Delete "${p.title}" from the backlog?`)) return false;
   state.projects = state.projects.filter(q => q.id !== id);
-  backlog().forEach((q, k) => { q.priority_order = k + 1; });
   render(); save();
   return true;
 }
@@ -810,13 +857,12 @@ $('vendor-file').addEventListener('change', importFromFile);
 document.addEventListener('click', e => {
   const tab = e.target.closest('[role="tab"]');
   if (tab){ show(tab.id.replace('tab-', '')); return; }
-  const up = e.target.closest('[data-up]');       if (up){ move(up.dataset.up, -1); return; }
-  const down = e.target.closest('[data-down]');   if (down){ move(down.dataset.down, 1); return; }
   const act = e.target.closest('[data-activate]'); if (act){ activate(act.dataset.activate); return; }
   const done = e.target.closest('[data-complete]'); if (done){ complete(done.dataset.complete); return; }
   const eff = e.target.closest('[data-effort]');   if (eff){ cycleEffort(eff.dataset.effort); return; }
   const cost = e.target.closest('[data-cost]');    if (cost && !cost.querySelector('input')){ startCost(cost); return; }
   const bud = e.target.closest('[data-budget]');   if (bud){ startBudget(bud); return; }
+  const mon = e.target.closest('[data-month]');   if (mon){ startMonth(mon); return; }
   const pick = e.target.closest('[data-pick]');    if (pick){ startPick(pick); return; }
   const open = e.target.closest('[data-open]');    if (open){ openVendor = open.dataset.open; view = 'vendor'; render(); return; }
   const ven = e.target.closest('[data-vendor-name], [data-vendor-field]'); if (ven){ startVendorEdit(ven); return; }

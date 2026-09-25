@@ -17,10 +17,18 @@ backlog*.
 ## The rules
 
 1. A project enters only through the Add field, by title, into the **Backlog**,
-   at the bottom. Effort (tap the chip to cycle — · S · M · L) and estimated
-   cost (tap to edit) are set on the row, later, or never.
-2. The backlog's order **is** the priority. It is set by hand (▲ / ▼) and
-   nothing computes it; `priority_order` is renumbered 1..n on every move.
+   under *later* (no month). Month, effort (tap the chip to cycle — · S · M ·
+   L) and estimated cost (tap to edit) are set on the row, later, or never.
+2. The **target month** is the priority, not position. Every Backlog and
+   Active row carries a month chip: tap it to pick this month or one of the
+   eleven after it, or *later* (no month). The backlog is grouped against
+   today — **this month** (a month already past stays here, overdue) ·
+   **next month** · **next quarter** (the months after next month through
+   the end of the next calendar quarter) · **later** (no month, or further
+   out) — so nothing needs moving on the first of the month. Empty groups
+   keep their heading, greyed. Within a group: earlier month first, then
+   newest last. Active is sorted the same way. `priority_order` stays in
+   old records; nothing reads it.
 3. A project's moves are Backlog → **Active** (the Activate button — one
    deliberate tap, a commitment) and Active → **Completed** (Done, with the
    date). Completed is newest first, read-only, and never deleted. There is
@@ -59,7 +67,9 @@ backlog*.
    device: `{ projects: [...], vendors: [...], budget: { year, amount,
    currency } }`. Every
    project carries the spec's §4 fields from day one, the unused ones empty
-   (`vendor_ids`, `dependency_ids`, `scheduled_*`, `calendar_event_id`), so
+   (`vendor_ids`, `dependency_ids`, `scheduled_*`, `calendar_event_id`), and
+   `target_month` (`YYYY-MM` or null, D7 — records written before it gain
+   it as null on load), so
    later stories add to the record without restructuring it. No backup, no
    sync.
 

@@ -111,8 +111,9 @@ test('Enter adds a project by title only; it lands last, with every field carrie
   type('Paint bedroom');
   assert.deepEqual(titles('backlog'), ['Fix garage door', 'Paint bedroom']);
   const [a, b] = stored().projects;
-  assert.equal(a.priority_order, 1);
-  assert.equal(b.priority_order, 2);
+  assert.equal(a.target_month, null);
+  assert.equal(b.target_month, null);
+  assert.equal(b.priority_order, null, 'nothing reads position any more');
   assert.equal(b.status, 'backlog');
   assert.equal(b.effort, null);
   assert.equal(b.estimated_cost, null);
@@ -166,37 +167,123 @@ test('tapping the cost edits it; "$1,250" parses, nonsense is ignored, empty cle
   assert.equal($('[data-cost="a"]').textContent, 'cost?');
 });
 
-/* ---- order ---- */
+/* ---- months instead of position (D7) ---- */
 
-test('up and down move a backlog row and renumber priority_order; the ends are disabled', () => {
-  const seed = doc([project({ id: 'a', title: 'A', priority_order: 1 }), project({ id: 'b', title: 'B', priority_order: 2 }), project({ id: 'c', title: 'C', priority_order: 3 })]);
-  const { $, titles, stored, click } = boot({ seed: { [KEY]: seed } });
-  assert.equal($('[data-up="a"]').disabled, true);
-  assert.equal($('[data-down="c"]').disabled, true);
-  click('[data-up="c"]');
-  assert.deepEqual(titles('backlog'), ['A', 'C', 'B']);
-  click('[data-down="a"]');
-  assert.deepEqual(titles('backlog'), ['C', 'A', 'B']);
-  const order = Object.fromEntries(stored().projects.map(p => [p.id, p.priority_order]));
-  assert.deepEqual(order, { c: 1, a: 2, b: 3 });
+const groupsOf = h => Object.fromEntries(h.$$('#backlog [data-group]').map(g => {
+  const titles = [];
+  for (let el = g.nextElementSibling; el && !el.dataset.group; el = el.nextElementSibling) titles.push(el.querySelector('.title').textContent);
+  return [g.dataset.group, { head: g.textContent, empty: g.classList.contains('empty'), titles }];
+}));
+// Six months around the Q3 → Q4 boundary, one project each, plus one with no month.
+const MONTH_DOC = () => doc([
+  project({ id: 'aug', title: 'Aug', target_month: '2026-08' }),
+  project({ id: 'sep', title: 'Sep', target_month: '2026-09' }),
+  project({ id: 'oct', title: 'Oct', target_month: '2026-10' }),
+  project({ id: 'nov', title: 'Nov', target_month: '2026-11' }),
+  project({ id: 'dec', title: 'Dec', target_month: '2026-12' }),
+  project({ id: 'jan', title: 'Jan', target_month: '2027-01' }),
+  project({ id: 'none', title: 'None' }),
+]);
+
+test('the backlog groups by month: this · next · next quarter · later, computed against today (end of Q3)', () => {
+  const h = boot({ now: new Date('2026-09-25T12:00:00.000Z'), seed: { [KEY]: MONTH_DOC() } });
+  const g = groupsOf(h);
+  assert.deepEqual(Object.keys(g), ['this', 'next', 'quarter', 'later']);
+  assert.deepEqual(g.this, { head: 'This monthSep', empty: false, titles: ['Aug', 'Sep'] }, 'a past month is overdue, not forgotten');
+  assert.deepEqual(g.next.titles, ['Oct']);
+  assert.equal(g.quarter.head, 'Next quarterNov – Dec');
+  assert.deepEqual(g.quarter.titles, ['Nov', 'Dec']);
+  assert.deepEqual(g.later.titles, ['Jan', 'None'], 'beyond the next quarter is later; no month comes last');
+  assert.equal(h.$('[data-up], [data-down], .order'), null, 'the arrows are gone');
 });
 
-test('the order survives a reload', () => {
-  const seed = doc([project({ id: 'a', title: 'A', priority_order: 2 }), project({ id: 'b', title: 'B', priority_order: 1 })]);
-  const { titles } = boot({ seed: { [KEY]: seed } });
-  assert.deepEqual(titles('backlog'), ['B', 'A']);
+test('crossing into October moves projects between groups with nothing stored changing', () => {
+  const seed = MONTH_DOC();
+  const h = boot({ now: new Date('2026-10-02T12:00:00.000Z'), seed: { [KEY]: seed } });
+  const g = groupsOf(h);
+  assert.deepEqual(g.this.titles, ['Aug', 'Sep', 'Oct']);
+  assert.deepEqual(g.next.titles, ['Nov']);
+  assert.equal(g.quarter.head, "Next quarterDec – Mar '27", 'next month is Nov, so the quarter runs from Dec to the end of Q1');
+  assert.deepEqual(g.quarter.titles, ['Dec', 'Jan']);
+  assert.deepEqual(g.later.titles, ['None']);
+  assert.deepEqual(h.stored(), seed, 'rendering never writes');
+});
+
+test('empty groups keep their heading, greyed; within a group the newest is last', () => {
+  const h = boot({ now: new Date('2026-09-25T12:00:00.000Z'), seed: { [KEY]: doc([
+    project({ id: 'b', title: 'Newer', target_month: '2026-10', created_at: '2026-09-20T10:00:00.000Z' }),
+    project({ id: 'a', title: 'Older', target_month: '2026-10', created_at: '2026-09-01T10:00:00.000Z' }),
+  ]) } });
+  const g = groupsOf(h);
+  assert.deepEqual(g.next.titles, ['Older', 'Newer']);
+  assert.equal(g.this.empty, true);
+  assert.equal(g.quarter.empty, true);
+  assert.equal(g.later.empty, true);
+  assert.equal(g.next.empty, false);
+});
+
+test('the month chip picks a month or later; it reads "Oct", "Jan \'27" or "later" and persists', () => {
+  const h = boot({ now: new Date('2026-09-25T12:00:00.000Z'), seed: { [KEY]: doc([project({ id: 'a', title: 'A' })]) } });
+  assert.equal(h.$('[data-month="a"]').textContent, 'later');
+  h.click('[data-month="a"]');
+  const sel = h.$('select.picker');
+  assert.deepEqual([...sel.options].map(o => o.value), ['', '2026-09', '2026-10', '2026-11', '2026-12', '2027-01', '2027-02', '2027-03', '2027-04', '2027-05', '2027-06', '2027-07', '2027-08']);
+  assert.equal(sel.options[2].textContent, 'October 2026');
+  sel.value = '2026-10'; sel.dispatchEvent(new h.w.Event('change', { bubbles: true }));
+  assert.equal(h.$('[data-month="a"]').textContent, 'Oct');
+  assert.equal(h.stored().projects[0].target_month, '2026-10');
+  assert.deepEqual(groupsOf(h).next.titles, ['A']);
+  h.click('[data-month="a"]');
+  h.$('select.picker').value = '2027-01'; h.$('select.picker').dispatchEvent(new h.w.Event('change', { bubbles: true }));
+  assert.equal(h.$('[data-month="a"]').textContent, "Jan '27");
+  h.click('[data-month="a"]');
+  h.$('select.picker').value = ''; h.$('select.picker').dispatchEvent(new h.w.Event('change', { bubbles: true }));
+  assert.equal(h.stored().projects[0].target_month, null);
+  assert.equal(h.$('[data-month="a"]').textContent, 'later');
+});
+
+test('Active rows carry the month chip and keep it; Active sorts by month; Completed has none', () => {
+  const h = boot({ now: new Date('2026-09-25T12:00:00.000Z'), seed: { [KEY]: doc([
+    project({ id: 'l', title: 'Late', status: 'activated', target_month: '2026-12' }),
+    project({ id: 'e', title: 'Early', status: 'activated', target_month: '2026-10' }),
+    project({ id: 'n', title: 'Unplanned', status: 'activated' }),
+    project({ id: 'c', title: 'Done', status: 'completed', completed_at: '2026-09-01T10:00:00.000Z', target_month: '2026-08' }),
+  ]) } });
+  assert.deepEqual(h.titles('active'), ['Early', 'Late', 'Unplanned']);
+  assert.deepEqual(h.$$('#active [data-month]').map(e => e.textContent), ['Oct', 'Dec', 'later']);
+  assert.equal(h.$('#completed [data-month]'), null);
+});
+
+test('activating keeps the month; a past month stays offered in the picker', () => {
+  const h = boot({ now: new Date('2026-09-25T12:00:00.000Z'), seed: { [KEY]: doc([project({ id: 'a', title: 'A', target_month: '2026-07' })]) } });
+  h.click('[data-month="a"]');
+  assert.equal(h.$('select.picker').value, '2026-07', 'the picker opens on the current month even though it is past');
+  h.$('select.picker').dispatchEvent(new h.w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  h.click('[data-activate="a"]');
+  assert.equal(h.stored().projects[0].target_month, '2026-07');
+  assert.equal(h.$('#active [data-month="a"]').textContent, 'Jul');
+});
+
+test('an old record without target_month loads as later and gains the field on the next save', () => {
+  const old = project({ id: 'a', title: 'Old', priority_order: 3 });
+  delete old.target_month;
+  const h = boot({ seed: { [KEY]: doc([old]) } });
+  assert.deepEqual(groupsOf(h).later.titles, ['Old']);
+  h.click('[data-effort="a"]');
+  const saved = h.stored().projects[0];
+  assert.equal(saved.target_month, null);
+  assert.equal(saved.priority_order, 3, 'priority_order stays in the document');
 });
 
 /* ---- the two moves ---- */
 
-test('Activate moves a project to Active; the backlog renumbers; Active opens on the next load', () => {
+test('Activate moves a project to Active; Active opens on the next load', () => {
   const seed = doc([project({ id: 'a', title: 'A', priority_order: 1 }), project({ id: 'b', title: 'B', priority_order: 2 })]);
   const { $, titles, stored, click } = boot({ seed: { [KEY]: seed } });
   click('[data-activate="a"]');
   assert.deepEqual(titles('backlog'), ['B']);
   assert.deepEqual(titles('active'), ['A']);
   assert.equal(stored().projects.find(p => p.id === 'a').status, 'activated');
-  assert.equal(stored().projects.find(p => p.id === 'b').priority_order, 1);
   assert.equal($('#tab-active').textContent, 'Active · 1');
   const again = boot({ seed: { [KEY]: stored() } });
   assert.equal(again.$('#tab-active').getAttribute('aria-selected'), 'true');
@@ -229,7 +316,6 @@ test('askDelete removes a backlog project only after confirm; Active and Complet
   const yes = boot({ seed: { [KEY]: seed }, confirm: true });
   assert.equal(yes.w.askDelete('a'), true);
   assert.deepEqual(yes.titles('backlog'), ['B']);
-  assert.equal(yes.stored().projects.find(p => p.id === 'b').priority_order, 1);
   assert.equal(yes.w.askDelete('x'), false);
   assert.equal(yes.w.askDelete('y'), false);
   assert.equal(yes.stored().projects.length, 3);
@@ -241,7 +327,7 @@ test('askDelete removes a backlog project only after confirm; Active and Complet
 test('a hold on a backlog row asks; a tap does not', async () => {
   const seed = doc([project({ id: 'a', title: 'A' })]);
   const { w, $, titles } = boot({ seed: { [KEY]: seed }, confirm: true });
-  const row = $('[data-row="a"] .num');
+  const row = $('[data-row="a"] .main');
   row.dispatchEvent(new w.Event('pointerdown', { bubbles: true }));
   row.dispatchEvent(new w.Event('pointerup', { bubbles: true }));
   await new Promise(r => setTimeout(r, 700));
