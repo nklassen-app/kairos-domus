@@ -1,4 +1,5 @@
-// DOM-level tests for Domus. index.html is booted in jsdom under a fixed
+// DOM-level tests for Domus (D9b-1: one list by month, the project sheet,
+// Budget and Done as their own views). index.html is booted in jsdom under a fixed
 // clock; each test gets a fresh window and a fresh localStorage.
 //
 //   cd tests && npm install && npm test
@@ -56,20 +57,24 @@ function boot({ now = new Date('2026-09-19T10:00:00.000Z'), seed = {}, confirm =
     $: s => d.querySelector(s),
     $$: s => [...d.querySelectorAll(s)],
     stored: () => { const r = w.localStorage.getItem(KEY); return r == null ? null : JSON.parse(r); },
-    type(text) { const f = d.getElementById('field'); f.value = text; f.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); },
+    // add through the + button and the sheet
+    type(text) { d.getElementById('add').click(); d.getElementById('s-title').value = text; d.getElementById('s-add').click(); },
     titles: (board) => [...d.querySelectorAll(`#${board} .title`)].map(e => e.textContent),
     click: (sel) => d.querySelector(sel).click(),
-    // edit an in-place input: click the target, set the value, press Enter
-    edit(sel, value, key = 'Enter') {
-      d.querySelector(sel).click();
-      const input = d.querySelector('input.edit, .cost input, .budget input');
-      assert.ok(input, `an input opened for ${sel}`);
+    // set a control in the sheet (input, select or textarea) and fire its change
+    set(id, value) { const el = d.getElementById(id); assert.ok(el, `#${id} is there`); el.value = value; el.dispatchEvent(new w.Event('change', { bubbles: true })); },
+    open: (id) => d.querySelector(`[data-project="${id}"]`).click(),
+    sheetOpen: () => !d.getElementById('sheet').hidden,
+    // the budget figure is still edited in place
+    editBudget(value) {
+      d.querySelector('[data-budget]').click();
+      const input = d.querySelector('#budget input');
       input.value = value;
-      input.dispatchEvent(new w.KeyboardEvent('keydown', { key, bubbles: true }));
+      input.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
     },
-    line: () => ({
-      committed: d.getElementById('committed')?.textContent,
+    figures: () => ({
       spent: d.getElementById('spent')?.textContent,
+      planned: d.getElementById('planned')?.textContent,
       remaining: d.getElementById('remaining')?.textContent,
       uncosted: d.getElementById('uncosted')?.textContent ?? null,
     }),
@@ -79,14 +84,15 @@ function boot({ now = new Date('2026-09-19T10:00:00.000Z'), seed = {}, confirm =
 
 /* ---- the page ---- */
 
-test('a fresh page opens on the Backlog, empty, with the budget unset', () => {
-  const { $, line } = boot();
-  assert.equal($('#tab-backlog').getAttribute('aria-selected'), 'true');
-  assert.equal($('#view-backlog').hidden, false);
-  assert.equal($('#view-active').hidden, true);
-  assert.match($('#backlog').textContent, /Nothing waiting/);
-  assert.equal($('[data-budget]').textContent, 'Set the 2026 budget');
-  assert.deepEqual(line(), { committed: '$0', spent: '$0', remaining: '—', uncosted: null });
+test('a fresh page opens on Plan, empty, with the four places at the bottom and the + button', () => {
+  const { $, $$ } = boot();
+  assert.deepEqual($$('.nav [role="tab"]').map(t => t.textContent), ['Plan', 'Vendors', 'Budget', 'Done']);
+  assert.equal($('#tab-plan').getAttribute('aria-selected'), 'true');
+  assert.equal($('#view-plan').hidden, false);
+  assert.match($('#plan').textContent, /Nothing planned/);
+  assert.equal($('#add').hidden, false);
+  assert.equal($('#sheet').hidden, true);
+  assert.equal($('#tab-backlog, #tab-active, [data-activate]'), null, 'Backlog, Active and Activate are gone');
 });
 
 test('the version marker matches the service-worker cache name', () => {
@@ -95,89 +101,227 @@ test('the version marker matches the service-worker cache name', () => {
   assert.equal($('.ver').textContent, cache);
 });
 
-test('tabs swap panels and aria-selected', () => {
+test('the bottom bar swaps views; the + button shows on Plan only', () => {
   const { $, click } = boot();
-  click('#tab-completed');
-  assert.equal($('#tab-completed').getAttribute('aria-selected'), 'true');
-  assert.equal($('#view-completed').hidden, false);
-  assert.equal($('#view-backlog').hidden, true);
+  for (const v of ['vendors', 'budget', 'done', 'plan']){
+    click('#tab-' + v);
+    assert.equal($('#tab-' + v).getAttribute('aria-selected'), 'true');
+    assert.equal($('#view-' + v).hidden, false);
+    assert.equal($('#add').hidden, v !== 'plan');
+  }
+  assert.equal($('#view-budget').hidden, true);
 });
 
 /* ---- add ---- */
 
-test('Enter adds a project by title only; it lands last, with every field carried empty', () => {
-  const { titles, stored, type } = boot();
-  type('Fix garage door');
-  type('Paint bedroom');
-  assert.deepEqual(titles('backlog'), ['Fix garage door', 'Paint bedroom']);
-  const [a, b] = stored().projects;
-  assert.equal(a.target_month, null);
-  assert.equal(b.target_month, null);
-  assert.equal(b.priority_order, null, 'nothing reads position any more');
-  assert.equal(b.status, 'backlog');
-  assert.equal(b.effort, null);
-  assert.equal(b.estimated_cost, null);
+test('+ opens an empty sheet; Add creates an open project with every field carried empty, under Later', () => {
+  const h = boot();
+  h.click('#add');
+  assert.equal(h.sheetOpen(), true);
+  assert.equal(h.$('#s-add').textContent, 'Add');
+  assert.equal(h.$('#s-done'), null, 'a new project cannot be marked done yet');
+  h.$('#s-title').value = 'Fix garage door'; h.click('#s-add');
+  assert.equal(h.sheetOpen(), false);
+  h.type('Paint bedroom');
+  assert.deepEqual(h.titles('plan'), ['Fix garage door', 'Paint bedroom']);
+  const b = h.stored().projects[1];
+  assert.equal(b.status, 'backlog', 'open; the status an old reader expects');
+  for (const f of ['target_month', 'effort', 'estimated_cost', 'calendar_event_id', 'completed_at', 'priority_order']) assert.equal(b[f], null, f);
   assert.deepEqual(b.vendor_ids, []);
   assert.deepEqual(b.dependency_ids, []);
-  assert.equal(b.calendar_event_id, null);
-  assert.equal(b.completed_at, null);
   assert.equal(b.created_at, '2026-09-19T10:00:00.000Z');
+  assert.equal(h.$('[data-group="later"] .sechead h2').textContent, 'Later');
 });
 
-test('an empty title adds nothing', () => {
-  const { stored, type } = boot();
-  type('   ');
-  assert.equal(stored(), null);
+test('what is set in the new sheet before Add is kept', () => {
+  const h = boot({ now: new Date('2026-09-25T12:00:00.000Z') });
+  h.click('#add');
+  h.$('#s-title').value = 'Gutters';
+  h.$('#s-title').dispatchEvent(new h.w.Event('input', { bubbles: true }));
+  h.set('s-month', '2026-10');
+  assert.equal(h.$('#s-title').value, 'Gutters', 'picking a month keeps the typed title');
+  h.click('[data-eff="M"]');
+  h.set('s-cost', '$320');
+  assert.equal(h.stored(), null, 'nothing is saved before Add');
+  h.click('#s-add');
+  const p = h.stored().projects[0];
+  assert.deepEqual([p.title, p.target_month, p.effort, p.estimated_cost], ['Gutters', '2026-10', 'M', 320]);
+  assert.deepEqual(groupsOf(h).next.titles, ['Gutters']);
 });
 
-/* ---- edit in place ---- */
-
-test('tapping a title edits it; empty or Escape keeps the original', () => {
-  const { titles, stored, edit } = boot({ seed: { [KEY]: doc([project({ id: 'a', title: 'Fix faucet' })]) } });
-  edit('[data-edit="a"]', 'Replace faucet');
-  assert.deepEqual(titles('backlog'), ['Replace faucet']);
-  assert.equal(stored().projects[0].title, 'Replace faucet');
-  edit('[data-edit="a"]', '');
-  assert.deepEqual(titles('backlog'), ['Replace faucet']);
-  edit('[data-edit="a"]', 'thrown away', 'Escape');
-  assert.deepEqual(titles('backlog'), ['Replace faucet']);
+test('an empty title adds nothing and says so; Cancel and Escape discard', () => {
+  const h = boot();
+  h.click('#add'); h.$('#s-title').value = '   '; h.click('#s-add');
+  assert.equal(h.stored(), null);
+  assert.equal(h.sheetOpen(), true);
+  assert.match(h.$('#status').textContent, /title/);
+  h.click('#s-cancel');
+  assert.equal(h.sheetOpen(), false);
+  h.click('#add'); h.$('#s-title').value = 'Thrown away';
+  h.w.document.dispatchEvent(new h.w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  assert.equal(h.sheetOpen(), false);
+  assert.equal(h.stored(), null);
 });
 
-test('the effort chip cycles — · S · M · L and persists', () => {
-  const { $, stored, click } = boot({ seed: { [KEY]: doc([project({ id: 'a' })]) } });
-  assert.equal($('[data-effort="a"]').textContent, '—');
-  click('[data-effort="a"]'); assert.equal($('[data-effort="a"]').textContent, 'S');
-  click('[data-effort="a"]'); assert.equal($('[data-effort="a"]').textContent, 'M');
-  click('[data-effort="a"]'); assert.equal($('[data-effort="a"]').textContent, 'L');
-  assert.equal(stored().projects[0].effort, 'L');
-  click('[data-effort="a"]'); assert.equal($('[data-effort="a"]').textContent, '—');
-  assert.equal(stored().projects[0].effort, null);
+/* ---- the sheet ---- */
+
+test('tapping a row opens its sheet; the title edits, and empty keeps the original', () => {
+  const h = boot({ seed: { [KEY]: doc([project({ id: 'a', title: 'Fix faucet' })]) } });
+  h.open('a');
+  assert.equal(h.sheetOpen(), true);
+  assert.equal(h.$('#s-title').value, 'Fix faucet');
+  h.set('s-title', 'Replace faucet');
+  assert.equal(h.stored().projects[0].title, 'Replace faucet');
+  assert.deepEqual(h.titles('plan'), ['Replace faucet']);
+  h.set('s-title', '  ');
+  assert.equal(h.stored().projects[0].title, 'Replace faucet');
+  assert.equal(h.$('#s-title').value, 'Replace faucet');
+  h.click('#dim');
+  assert.equal(h.sheetOpen(), false);
+  h.open('a'); h.click('#s-close');
+  assert.equal(h.sheetOpen(), false);
 });
 
-test('tapping the cost edits it; "$1,250" parses, nonsense is ignored, empty clears', () => {
-  const { $, stored, edit } = boot({ seed: { [KEY]: doc([project({ id: 'a' })]) } });
-  assert.equal($('[data-cost="a"]').textContent, 'cost?');
-  edit('[data-cost="a"]', '$1,250');
-  assert.equal($('[data-cost="a"]').textContent, '$1,250');
-  assert.equal(stored().projects[0].estimated_cost, 1250);
-  edit('[data-cost="a"]', 'about a grand');
-  assert.equal(stored().projects[0].estimated_cost, 1250);
-  edit('[data-cost="a"]', '');
-  assert.equal(stored().projects[0].estimated_cost, null);
-  assert.equal($('[data-cost="a"]').textContent, 'cost?');
+test('effort, cost and notes are set in the sheet; "$1,250" parses, nonsense is ignored, empty clears', () => {
+  const h = boot({ seed: { [KEY]: doc([project({ id: 'a' })]) } });
+  h.open('a');
+  assert.equal(h.$('[data-eff=""]').getAttribute('aria-pressed'), 'true');
+  h.click('[data-eff="L"]');
+  assert.equal(h.stored().projects[0].effort, 'L');
+  assert.equal(h.$('[data-eff="L"]').getAttribute('aria-pressed'), 'true');
+  h.click('[data-eff=""]');
+  assert.equal(h.stored().projects[0].effort, null);
+  h.set('s-cost', '$1,250');
+  assert.equal(h.stored().projects[0].estimated_cost, 1250);
+  assert.equal(h.$('#plan .cost').textContent, '$1,250');
+  h.set('s-cost', 'about a grand');
+  assert.equal(h.stored().projects[0].estimated_cost, 1250);
+  assert.equal(h.$('#s-cost').value, '1250');
+  h.set('s-cost', '');
+  assert.equal(h.stored().projects[0].estimated_cost, null);
+  assert.equal(h.$('#plan .cost').textContent, 'no cost');
+  h.set('s-notes', 'Bring the long ladder.');
+  assert.equal(h.stored().projects[0].description, 'Bring the long ladder.');
 });
 
-/* ---- months instead of position (D7) ---- */
+test('a row is the title, one quiet line and the cost — no chips or buttons on it', () => {
+  const h = boot({ now: new Date('2026-09-25T12:00:00.000Z'), seed: { [KEY]: docV(
+    [vendor({ id: 'ace', name: 'Ace Electric' }), vendor({ id: 'bob', name: 'Bob Builds' })],
+    [project({ id: 'a', title: 'Panel', effort: 'L', estimated_cost: 2400, vendor_ids: ['ace', 'bob'], target_month: '2026-09' }),
+     project({ id: 'b', title: 'Fence', target_month: '2026-11' }),
+     project({ id: 'c', title: 'Attic', effort: 'S', target_month: '2027-06' })]) } });
+  const sub = id => h.$(`[data-project="${id}"] .sub`).textContent;
+  assert.equal(sub('a'), 'Ace Electric, Bob Builds · L');
+  assert.equal(sub('b'), 'Nov · DIY', 'the quarter group shows which month');
+  assert.equal(sub('c'), "Jun '27 · DIY · S");
+  assert.equal(h.$('#plan .chip, #plan select, #plan [data-activate], #plan [data-up]'), null);
+});
 
-const groupsOf = h => Object.fromEntries(h.$$('#backlog [data-group]').map(g => {
-  const titles = [];
-  for (let el = g.nextElementSibling; el && !el.dataset.group; el = el.nextElementSibling) titles.push(el.querySelector('.title').textContent);
-  return [g.dataset.group, { head: g.textContent, empty: g.classList.contains('empty'), titles }];
-}));
+/* ---- vendors on a project (D2b, now in the sheet) ---- */
+
+test('the sheet links, adds a second, and unlinks vendors; none is DIY', () => {
+  const h = boot({ seed: { [KEY]: docV([vendor({ id: 'ace', name: 'Ace' }), vendor({ id: 'bob', name: 'Bob' })], [project({ id: 'a', title: 'A' })]) } });
+  h.open('a');
+  assert.equal(h.$('#s-vendor option').textContent, 'DIY — add a vendor');
+  h.set('s-vendor', 'ace');
+  h.set('s-vendor', 'bob');
+  assert.deepEqual(h.stored().projects[0].vendor_ids, ['ace', 'bob']);
+  assert.deepEqual(h.$$('#sheet [data-unlink]').map(b => b.textContent), ['Ace', 'Bob']);
+  assert.deepEqual(h.$$('#s-vendor option').map(o => o.value), ['', '__new'], 'a linked vendor is not offered twice');
+  h.click('[data-unlink="ace"]');
+  assert.deepEqual(h.stored().projects[0].vendor_ids, ['bob']);
+  assert.equal(h.$('[data-project="a"] .sub').textContent, 'Bob');
+  h.click('[data-unlink="bob"]');
+  assert.equal(h.$('[data-project="a"] .sub').textContent, 'DIY');
+});
+
+test('"+ New vendor…" asks for a name and links the new vendor; a cancelled prompt changes nothing', () => {
+  const h = boot({ seed: { [KEY]: doc([project({ id: 'a', title: 'A' })]) }, prompt: 'Zed Plumbing' });
+  h.open('a');
+  h.set('s-vendor', '__new');
+  const v = h.stored().vendors[0];
+  assert.equal(v.name, 'Zed Plumbing');
+  assert.deepEqual(h.stored().projects[0].vendor_ids, [v.id]);
+  const no = boot({ seed: { [KEY]: doc([project({ id: 'a', title: 'A' })]) }, prompt: null });
+  no.open('a');
+  no.set('s-vendor', '__new');
+  assert.deepEqual(no.stored().vendors ?? [], []);
+  assert.deepEqual(no.stored().projects[0].vendor_ids, []);
+  assert.equal(no.$('#s-vendor').value, '');
+});
+
+test('a vendor a project names cannot be deleted; unlinked, it can', () => {
+  const h = boot({ seed: { [KEY]: docV([vendor({ id: 'ace', name: 'Ace' })], [project({ id: 'a', vendor_ids: ['ace'] })]) }, confirm: true });
+  assert.equal(h.w.askDeleteVendor('ace'), false);
+  h.open('a'); h.click('[data-unlink="ace"]'); h.click('#dim');
+  assert.equal(h.w.askDeleteVendor('ace'), true);
+});
+
+/* ---- done and delete ---- */
+
+test('Mark done completes the project with the date; it leaves Plan for Done, by year, newest first', () => {
+  const seed = doc([
+    project({ id: 'a', title: 'A', estimated_cost: 100 }),
+    project({ id: 'old', title: 'Old', status: 'completed', completed_at: '2025-03-01T09:00:00.000Z' }),
+    project({ id: 'mid', title: 'Mid', status: 'completed', completed_at: '2026-03-01T09:00:00.000Z' }),
+  ]);
+  const h = boot({ seed: { [KEY]: seed } });
+  h.open('a'); h.click('#s-done');
+  assert.equal(h.sheetOpen(), false);
+  assert.deepEqual(h.titles('plan'), []);
+  const a = h.stored().projects.find(p => p.id === 'a');
+  assert.equal(a.status, 'completed');
+  assert.equal(a.completed_at, '2026-09-19T10:00:00.000Z');
+  h.click('#tab-done');
+  assert.deepEqual(h.titles('done'), ['A', 'Mid', 'Old']);
+  assert.deepEqual(h.$$('#done .sechead h2').map(e => e.textContent), ['2026', '2025']);
+  assert.match(h.$('#done').textContent, /Sep 19, 2026/);
+  assert.equal(h.$('#done [data-project], #done button'), null, 'done rows are read-only');
+});
+
+test('Delete asks, then removes an open project; a done project is never deleted', () => {
+  const seed = doc([project({ id: 'a', title: 'A' }), project({ id: 'b', title: 'B' }), project({ id: 'y', title: 'Y', status: 'completed', completed_at: '2026-01-01T00:00:00.000Z' })]);
+  const no = boot({ seed: { [KEY]: seed }, confirm: false });
+  no.open('a'); no.click('#s-delete');
+  assert.deepEqual(no.titles('plan'), ['A', 'B']);
+  assert.equal(no.sheetOpen(), true);
+  const yes = boot({ seed: { [KEY]: seed }, confirm: true });
+  yes.open('a'); yes.click('#s-delete');
+  assert.deepEqual(yes.titles('plan'), ['B']);
+  assert.equal(yes.sheetOpen(), false);
+  assert.equal(yes.w.askDelete('y'), false);
+  assert.equal(yes.stored().projects.length, 2);
+});
+
+/* ---- old documents ---- */
+
+test('an activated record from before is simply open; an old record without target_month loads as later', () => {
+  const old = project({ id: 'o', title: 'Old', priority_order: 3 });
+  delete old.target_month;
+  const h = boot({ seed: { [KEY]: doc([project({ id: 'act', title: 'Was active', status: 'activated', target_month: '2026-09' }), old]) } });
+  assert.deepEqual(groupsOf(h).this.titles, ['Was active']);
+  assert.deepEqual(groupsOf(h).later.titles, ['Old']);
+  h.open('o'); h.click('[data-eff="S"]');
+  const saved = h.stored().projects.find(p => p.id === 'o');
+  assert.equal(saved.target_month, null);
+  assert.equal(saved.priority_order, 3, 'priority_order stays in the document');
+  assert.equal(h.stored().projects.find(p => p.id === 'act').status, 'activated', 'status is not rewritten');
+  h.open('act'); h.click('#s-done');
+  assert.equal(h.stored().projects.find(p => p.id === 'act').status, 'completed');
+});
+
+/* ---- months (D7) ---- */
+
+const groupsOf = h => Object.fromEntries(h.$$('#plan [data-group]').map(g => [g.dataset.group, {
+  head: g.querySelector('h2').textContent,
+  range: g.querySelector('.sum').textContent,
+  empty: g.querySelector('.sechead').classList.contains('empty'),
+  titles: [...g.querySelectorAll('.title')].map(e => e.textContent),
+}]));
 // Six months around the Q3 → Q4 boundary, one project each, plus one with no month.
 const MONTH_DOC = () => doc([
   project({ id: 'aug', title: 'Aug', target_month: '2026-08' }),
-  project({ id: 'sep', title: 'Sep', target_month: '2026-09' }),
+  project({ id: 'sep', title: 'Sep', target_month: '2026-09', estimated_cost: 100 }),
   project({ id: 'oct', title: 'Oct', target_month: '2026-10' }),
   project({ id: 'nov', title: 'Nov', target_month: '2026-11' }),
   project({ id: 'dec', title: 'Dec', target_month: '2026-12' }),
@@ -185,16 +329,17 @@ const MONTH_DOC = () => doc([
   project({ id: 'none', title: 'None' }),
 ]);
 
-test('the backlog groups by month: this · next · next quarter · later, computed against today (end of Q3)', () => {
+test('Plan groups by month: this · next · next quarter · later, computed against today (end of Q3)', () => {
   const h = boot({ now: new Date('2026-09-25T12:00:00.000Z'), seed: { [KEY]: MONTH_DOC() } });
   const g = groupsOf(h);
   assert.deepEqual(Object.keys(g), ['this', 'next', 'quarter', 'later']);
-  assert.deepEqual(g.this, { head: 'This monthSep', empty: false, titles: ['Aug', 'Sep'] }, 'a past month is overdue, not forgotten');
+  assert.deepEqual(g.this, { head: 'This month', range: 'Sep · $100', empty: false, titles: ['Aug', 'Sep'] }, 'a past month is overdue, not forgotten');
   assert.deepEqual(g.next.titles, ['Oct']);
-  assert.equal(g.quarter.head, 'Next quarterNov – Dec');
+  assert.equal(g.quarter.range, 'Nov – Dec · $0');
   assert.deepEqual(g.quarter.titles, ['Nov', 'Dec']);
   assert.deepEqual(g.later.titles, ['Jan', 'None'], 'beyond the next quarter is later; no month comes last');
-  assert.equal(h.$('[data-up], [data-down], .order'), null, 'the arrows are gone');
+  assert.equal(g.later.range, '$0', 'no stray separator when a group has no range');
+  assert.equal(h.$('#plan-aside').textContent, '7 open');
 });
 
 test('crossing into October moves projects between groups with nothing stored changing', () => {
@@ -203,7 +348,7 @@ test('crossing into October moves projects between groups with nothing stored ch
   const g = groupsOf(h);
   assert.deepEqual(g.this.titles, ['Aug', 'Sep', 'Oct']);
   assert.deepEqual(g.next.titles, ['Nov']);
-  assert.equal(g.quarter.head, "Next quarterDec – Mar '27", 'next month is Nov, so the quarter runs from Dec to the end of Q1');
+  assert.equal(g.quarter.range, "Dec – Mar '27 · $0");
   assert.deepEqual(g.quarter.titles, ['Dec', 'Jan']);
   assert.deepEqual(g.later.titles, ['None']);
   assert.deepEqual(h.stored(), seed, 'rendering never writes');
@@ -216,179 +361,72 @@ test('empty groups keep their heading, greyed; within a group the newest is last
   ]) } });
   const g = groupsOf(h);
   assert.deepEqual(g.next.titles, ['Older', 'Newer']);
-  assert.equal(g.this.empty, true);
-  assert.equal(g.quarter.empty, true);
-  assert.equal(g.later.empty, true);
-  assert.equal(g.next.empty, false);
+  assert.deepEqual([g.this.empty, g.next.empty, g.quarter.empty, g.later.empty], [true, false, true, true]);
 });
 
-test('the month chip picks a month or later; it reads "Oct", "Jan \'27" or "later" and persists', () => {
-  const h = boot({ now: new Date('2026-09-25T12:00:00.000Z'), seed: { [KEY]: doc([project({ id: 'a', title: 'A' })]) } });
-  assert.equal(h.$('[data-month="a"]').textContent, 'later');
-  h.click('[data-month="a"]');
-  const sel = h.$('select.picker');
-  assert.deepEqual([...sel.options].map(o => o.value), ['', '2026-09', '2026-10', '2026-11', '2026-12', '2027-01', '2027-02', '2027-03', '2027-04', '2027-05', '2027-06', '2027-07', '2027-08']);
-  assert.equal(sel.options[2].textContent, 'October 2026');
-  sel.value = '2026-10'; sel.dispatchEvent(new h.w.Event('change', { bubbles: true }));
-  assert.equal(h.$('[data-month="a"]').textContent, 'Oct');
+test('the month is picked in the sheet: this month and the eleven after it, or later; a past month stays offered', () => {
+  const h = boot({ now: new Date('2026-09-25T12:00:00.000Z'), seed: { [KEY]: doc([project({ id: 'a', title: 'A' }), project({ id: 'p', title: 'P', target_month: '2026-07' })]) } });
+  h.open('a');
+  const opts = h.$$('#s-month option');
+  assert.deepEqual(opts.map(o => o.value), ['', '2026-09', '2026-10', '2026-11', '2026-12', '2027-01', '2027-02', '2027-03', '2027-04', '2027-05', '2027-06', '2027-07', '2027-08']);
+  assert.equal(opts[2].textContent, 'October 2026');
+  h.set('s-month', '2026-10');
   assert.equal(h.stored().projects[0].target_month, '2026-10');
   assert.deepEqual(groupsOf(h).next.titles, ['A']);
-  h.click('[data-month="a"]');
-  h.$('select.picker').value = '2027-01'; h.$('select.picker').dispatchEvent(new h.w.Event('change', { bubbles: true }));
-  assert.equal(h.$('[data-month="a"]').textContent, "Jan '27");
-  h.click('[data-month="a"]');
-  h.$('select.picker').value = ''; h.$('select.picker').dispatchEvent(new h.w.Event('change', { bubbles: true }));
+  h.set('s-month', '');
   assert.equal(h.stored().projects[0].target_month, null);
-  assert.equal(h.$('[data-month="a"]').textContent, 'later');
+  h.click('#dim'); h.open('p');
+  assert.equal(h.$('#s-month').value, '2026-07');
 });
 
-test('Active rows carry the month chip and keep it; Active sorts by month; Completed has none', () => {
-  const h = boot({ now: new Date('2026-09-25T12:00:00.000Z'), seed: { [KEY]: doc([
-    project({ id: 'l', title: 'Late', status: 'activated', target_month: '2026-12' }),
-    project({ id: 'e', title: 'Early', status: 'activated', target_month: '2026-10' }),
-    project({ id: 'n', title: 'Unplanned', status: 'activated' }),
-    project({ id: 'c', title: 'Done', status: 'completed', completed_at: '2026-09-01T10:00:00.000Z', target_month: '2026-08' }),
-  ]) } });
-  assert.deepEqual(h.titles('active'), ['Early', 'Late', 'Unplanned']);
-  assert.deepEqual(h.$$('#active [data-month]').map(e => e.textContent), ['Oct', 'Dec', 'later']);
-  assert.equal(h.$('#completed [data-month]'), null);
-});
+/* ---- the budget view ---- */
 
-test('activating keeps the month; a past month stays offered in the picker', () => {
-  const h = boot({ now: new Date('2026-09-25T12:00:00.000Z'), seed: { [KEY]: doc([project({ id: 'a', title: 'A', target_month: '2026-07' })]) } });
-  h.click('[data-month="a"]');
-  assert.equal(h.$('select.picker').value, '2026-07', 'the picker opens on the current month even though it is past');
-  h.$('select.picker').dispatchEvent(new h.w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
-  h.click('[data-activate="a"]');
-  assert.equal(h.stored().projects[0].target_month, '2026-07');
-  assert.equal(h.$('#active [data-month="a"]').textContent, 'Jul');
-});
-
-test('an old record without target_month loads as later and gains the field on the next save', () => {
-  const old = project({ id: 'a', title: 'Old', priority_order: 3 });
-  delete old.target_month;
-  const h = boot({ seed: { [KEY]: doc([old]) } });
-  assert.deepEqual(groupsOf(h).later.titles, ['Old']);
-  h.click('[data-effort="a"]');
-  const saved = h.stored().projects[0];
-  assert.equal(saved.target_month, null);
-  assert.equal(saved.priority_order, 3, 'priority_order stays in the document');
-});
-
-/* ---- the two moves ---- */
-
-test('Activate moves a project to Active; Active opens on the next load', () => {
-  const seed = doc([project({ id: 'a', title: 'A', priority_order: 1 }), project({ id: 'b', title: 'B', priority_order: 2 })]);
-  const { $, titles, stored, click } = boot({ seed: { [KEY]: seed } });
-  click('[data-activate="a"]');
-  assert.deepEqual(titles('backlog'), ['B']);
-  assert.deepEqual(titles('active'), ['A']);
-  assert.equal(stored().projects.find(p => p.id === 'a').status, 'activated');
-  assert.equal($('#tab-active').textContent, 'Active · 1');
-  const again = boot({ seed: { [KEY]: stored() } });
-  assert.equal(again.$('#tab-active').getAttribute('aria-selected'), 'true');
-  assert.equal(again.$('#view-active').hidden, false);
-});
-
-test('Done completes an active project with the date; Completed lists newest first and stays readable', () => {
-  const seed = doc([
-    project({ id: 'a', title: 'A', status: 'activated', estimated_cost: 100 }),
-    project({ id: 'old', title: 'Old', status: 'completed', completed_at: '2026-03-01T09:00:00.000Z' }),
-  ]);
-  const { $, titles, stored, click } = boot({ seed: { [KEY]: seed } });
-  click('[data-complete="a"]');
-  assert.deepEqual(titles('active'), []);
-  assert.deepEqual(titles('completed'), ['A', 'Old']);
-  const a = stored().projects.find(p => p.id === 'a');
-  assert.equal(a.status, 'completed');
-  assert.equal(a.completed_at, '2026-09-19T10:00:00.000Z');
-  assert.match($('#completed').textContent, /Sep 19, 2026/);
-  assert.equal($('#completed [data-effort], #completed [data-cost], #completed button'), null, 'completed rows carry no controls');
-});
-
-/* ---- delete: hold-and-confirm, backlog only ---- */
-
-test('askDelete removes a backlog project only after confirm; Active and Completed are never deleted', () => {
-  const seed = doc([
-    project({ id: 'a', title: 'A', priority_order: 1 }), project({ id: 'b', title: 'B', priority_order: 2 }),
-    project({ id: 'x', title: 'X', status: 'activated' }), project({ id: 'y', title: 'Y', status: 'completed', completed_at: '2026-01-01T00:00:00.000Z' }),
-  ]);
-  const yes = boot({ seed: { [KEY]: seed }, confirm: true });
-  assert.equal(yes.w.askDelete('a'), true);
-  assert.deepEqual(yes.titles('backlog'), ['B']);
-  assert.equal(yes.w.askDelete('x'), false);
-  assert.equal(yes.w.askDelete('y'), false);
-  assert.equal(yes.stored().projects.length, 3);
-  const no = boot({ seed: { [KEY]: seed }, confirm: false });
-  assert.equal(no.w.askDelete('a'), false);
-  assert.deepEqual(no.titles('backlog'), ['A', 'B']);
-});
-
-test('a hold on a backlog row asks; a tap does not', async () => {
-  const seed = doc([project({ id: 'a', title: 'A' })]);
-  const { w, $, titles } = boot({ seed: { [KEY]: seed }, confirm: true });
-  const row = $('[data-row="a"] .main');
-  row.dispatchEvent(new w.Event('pointerdown', { bubbles: true }));
-  row.dispatchEvent(new w.Event('pointerup', { bubbles: true }));
-  await new Promise(r => setTimeout(r, 700));
-  assert.deepEqual(titles('backlog'), ['A']);
-  row.dispatchEvent(new w.Event('pointerdown', { bubbles: true }));
-  await new Promise(r => setTimeout(r, 700));
-  assert.deepEqual(titles('backlog'), []);
-});
-
-/* ---- the budget line ---- */
-
-test('the budget is set once by tapping the figure, and persists', () => {
-  const { $, stored, edit, line } = boot();
-  edit('[data-budget]', '12000');
-  assert.equal($('[data-budget]').textContent, '$12,000');
-  assert.equal(stored().budget.amount, 12000);
-  assert.equal(stored().budget.year, 2026);
-  assert.equal(line().remaining, '$12,000');
-  const again = boot({ seed: { [KEY]: stored() } });
+test('the budget is set by tapping the figure on its own view, and persists', () => {
+  const h = boot();
+  h.click('#tab-budget');
+  assert.equal(h.$('[data-budget]').textContent, 'Set the 2026 budget');
+  h.editBudget('12000');
+  assert.equal(h.$('[data-budget]').textContent, '$12,000');
+  assert.equal(h.stored().budget.amount, 12000);
+  assert.equal(h.figures().remaining, '$12,000');
+  const again = boot({ seed: { [KEY]: h.stored() } });
   assert.equal(again.$('[data-budget]').textContent, '$12,000');
 });
 
-test('committed = active costs, spent = completed this year, remaining = budget − both; nothing stored', () => {
+test('planned = open with a month this year, spent = done this year, remaining = budget − both; nothing stored', () => {
   const seed = doc([
-    project({ id: 'b1', estimated_cost: 999 }),                                    // backlog: not counted
-    project({ id: 'a1', status: 'activated', estimated_cost: 4000 }),
-    project({ id: 'a2', status: 'activated', estimated_cost: 350.5 }),
+    project({ id: 'p1', target_month: '2026-10', estimated_cost: 4000 }),
+    project({ id: 'p2', status: 'activated', target_month: '2026-08', estimated_cost: 350.5 }),   // past month: still planned
+    project({ id: 'l1', estimated_cost: 999 }),                                                   // no month: not planned
+    project({ id: 'n1', target_month: '2027-02', estimated_cost: 700 }),                          // next year: not this budget
     project({ id: 'c1', status: 'completed', estimated_cost: 2100, completed_at: '2026-02-10T00:00:00.000Z' }),
-    project({ id: 'c0', status: 'completed', estimated_cost: 5000, completed_at: '2025-12-30T00:00:00.000Z' }),  // last year
+    project({ id: 'c0', status: 'completed', estimated_cost: 5000, completed_at: '2025-12-30T00:00:00.000Z' }),
   ], { year: 2026, amount: 12000, currency: 'USD' });
-  const { line, stored } = boot({ seed: { [KEY]: seed } });
-  assert.deepEqual(line(), { committed: '$4,350.50', spent: '$2,100', remaining: '$5,549.50', uncosted: null });
-  assert.equal(Object.keys(stored().budget).sort().join(), 'amount,currency,year');
+  const h = boot({ seed: { [KEY]: seed } });
+  assert.deepEqual(h.figures(), { spent: '$2,100', planned: '$4,350.50', remaining: '$5,549.50', uncosted: null });
+  assert.equal(h.$('#remaining-big').textContent, '$5,549.50');
+  assert.deepEqual(h.$$('#by-month .mrow').map(r => `${r.querySelector('.k').textContent} ${r.querySelector('b').textContent}`),
+    ['August 2026 · 1 $350.50', 'October 2026 · 1 $4,000', 'Not planned yet · 1 $999', 'Planned for another year · 1 $700']);
+  assert.equal(Object.keys(h.stored().budget).sort().join(), 'amount,currency,year');
 });
 
-test('empty costs count as zero and the line says how many', () => {
+test('costs missing from planned or spent are counted; overspend shows negative', () => {
   const seed = doc([
-    project({ id: 'a1', status: 'activated', estimated_cost: 500 }),
-    project({ id: 'a2', status: 'activated' }),
-    project({ id: 'c1', status: 'completed', completed_at: '2026-05-01T00:00:00.000Z' }),
-    project({ id: 'b1' }),   // backlog without a cost is not a caveat on the line
+    project({ id: 'a', target_month: '2026-09', estimated_cost: 1500 }),
+    project({ id: 'b', target_month: '2026-11' }),
+    project({ id: 'c', status: 'completed', completed_at: '2026-05-01T00:00:00.000Z' }),
+    project({ id: 'l' }),   // not planned: not a caveat
   ], { year: 2026, amount: 1000, currency: 'USD' });
-  const { line } = boot({ seed: { [KEY]: seed } });
-  assert.deepEqual(line(), { committed: '$500', spent: '$0', remaining: '$500', uncosted: '2 projects without a cost yet' });
+  const h = boot({ seed: { [KEY]: seed } });
+  assert.deepEqual(h.figures(), { spent: '$0', planned: '$1,500', remaining: '$-500', uncosted: '2 projects without a cost yet' });
+  assert.ok(h.$('#remaining-big').classList.contains('neg'));
 });
 
-test('overspend shows as a negative remaining', () => {
-  const seed = doc([project({ id: 'a1', status: 'activated', estimated_cost: 1500 })], { year: 2026, amount: 1000, currency: 'USD' });
-  const { $, line } = boot({ seed: { [KEY]: seed } });
-  assert.equal(line().remaining, '$-500');
-  assert.ok($('#remaining').closest('.neg'));
-});
-
-test('the line follows the moves: activate commits, complete moves it to spent', () => {
-  const seed = doc([project({ id: 'a', estimated_cost: 300 })], { year: 2026, amount: 1000, currency: 'USD' });
-  const { line, click } = boot({ seed: { [KEY]: seed } });
-  assert.deepEqual(line(), { committed: '$0', spent: '$0', remaining: '$1,000', uncosted: null });
-  click('[data-activate="a"]');
-  assert.deepEqual(line(), { committed: '$300', spent: '$0', remaining: '$700', uncosted: null });
-  click('[data-complete="a"]');
-  assert.deepEqual(line(), { committed: '$0', spent: '$300', remaining: '$700', uncosted: null });
+test('marking done moves the cost from planned to spent', () => {
+  const h = boot({ seed: { [KEY]: doc([project({ id: 'a', target_month: '2026-09', estimated_cost: 300 })], { year: 2026, amount: 1000, currency: 'USD' }) } });
+  assert.deepEqual(h.figures(), { spent: '$0', planned: '$300', remaining: '$700', uncosted: null });
+  h.open('a'); h.click('#s-done');
+  assert.deepEqual(h.figures(), { spent: '$300', planned: '$0', remaining: '$700', uncosted: null });
 });
 
 /* ---- reload round-trip ---- */
@@ -396,13 +434,12 @@ test('the line follows the moves: activate commits, complete moves it to spent',
 test('a reload shows exactly what was stored', () => {
   const first = boot();
   first.type('Fix garage door');
-  first.edit('[data-cost]', '500');
-  first.click('[data-effort]');
-  first.edit('[data-budget]', '9000');
+  const id = first.stored().projects[0].id;
+  first.open(id); first.set('s-cost', '500'); first.click('[data-eff="S"]'); first.click('#dim');
+  first.click('#tab-budget'); first.editBudget('9000');
   const again = boot({ seed: { [KEY]: first.stored() } });
-  assert.deepEqual(again.titles('backlog'), ['Fix garage door']);
-  assert.equal(again.$('[data-effort]').textContent, 'S');
-  assert.equal(again.$('[data-cost]').textContent, '$500');
+  assert.deepEqual(again.titles('plan'), ['Fix garage door']);
+  assert.equal(again.$('#plan .cost').textContent, '$500');
   assert.equal(again.$('[data-budget]').textContent, '$9,000');
   assert.deepEqual(again.stored(), first.stored());
 });
@@ -444,7 +481,7 @@ test('Enter adds a vendor by name with every field empty; the list is by name', 
   typeVendor(h, 'Zed Plumbing');
   typeVendor(h, 'ace electric');
   assert.deepEqual(h.titles('vendors'), ['ace electric', 'Zed Plumbing']);
-  assert.equal(h.$('#tab-vendors').textContent, 'Vendors · 2');
+  assert.equal(h.$('#vendors-aside').textContent, '2');
   const v = h.stored().vendors.find(x => x.name === 'Zed Plumbing');
   assert.deepEqual([v.category, v.phone, v.email, v.website, v.notes], ['', '', '', '', '']);
   assert.equal(v.created_at, '2026-09-19T10:00:00.000Z');
@@ -503,7 +540,7 @@ test('vendors survive a reload alongside projects and the budget', () => {
   first.type('Fix garage door');
   typeVendor(first, 'Ace');
   const again = boot({ seed: { [KEY]: first.stored() } });
-  assert.deepEqual(again.titles('backlog'), ['Fix garage door']);
+  assert.deepEqual(again.titles('plan'), ['Fix garage door']);
   assert.deepEqual(again.titles('vendors'), ['Ace']);
   assert.deepEqual(again.stored(), first.stored());
 });
@@ -537,7 +574,7 @@ test('a seed document imports its contacts: §8 fields mapped, the rest folded i
   importPaste(h, SEED);
   assert.equal(h.$('#status').textContent, 'Imported 3 vendors.');
   assert.deepEqual(h.titles('vendors'), ['Acme Electric (electrician)', 'Landscaping', 'Sam Example (tutor)']);
-  assert.equal(h.$('#tab-vendors').textContent, 'Vendors · 3');
+  assert.equal(h.$('#vendors-aside').textContent, '3');
   const acme = h.stored().vendors.find(v => v.name.startsWith('Acme'));
   assert.deepEqual([acme.category, acme.phone, acme.email, acme.website], ['home-maintenance', '+1 555-010-2030', '', 'https://acme.example.com']);
   assert.equal(acme.notes, [
@@ -594,140 +631,55 @@ test('a chosen file imports the same way', async () => {
   assert.equal(h.stored().vendors.length, 3);
 });
 
-/* ---- vendors on projects (D2b, first half) ---- */
-
-const pickOn = (h, sel, value) => {
-  h.click(sel);
-  const picker = h.$('#backlog select.picker, #active select.picker');
-  assert.ok(picker, `a picker opened for ${sel}`);
-  picker.value = value;
-  picker.dispatchEvent(new h.w.Event('change', { bubbles: true }));
-};
-const chips = (h, board, id) => [...h.w.document.querySelectorAll(`#${board} [data-row="${id}"] .chip.vendor`)].map(e => e.textContent);
-
-test('the intake dropdown: DIY by default, a chosen vendor lands on the new project, "+ New vendor…" prompts and selects', () => {
-  const h = boot({ seed: { [KEY]: docV([vendor({ id: 'ace', name: 'Ace' }), vendor({ id: 'zed', name: 'Zed' })]) }, prompt: 'Bo Builders' });
-  const sel = h.$('#field-vendor');
-  assert.deepEqual([...sel.options].map(o => o.textContent), ['No vendor (DIY)', 'Ace', 'Zed', '+ New vendor…']);
-  h.type('Fix door');
-  assert.deepEqual(h.stored().projects[0].vendor_ids, []);
-  sel.value = 'zed';
-  h.type('Paint');
-  assert.deepEqual(h.stored().projects[1].vendor_ids, ['zed']);
-  assert.equal(sel.value, '', 'the dropdown resets after an add');
-  sel.value = '__new';
-  sel.dispatchEvent(new h.w.Event('change', { bubbles: true }));
-  const bo = h.stored().vendors.find(v => v.name === 'Bo Builders');
-  assert.ok(bo, 'the new vendor is stored at once');
-  assert.equal(h.$('#field-vendor').value, bo.id);
-  h.type('Deck');
-  assert.deepEqual(h.stored().projects[2].vendor_ids, [bo.id]);
-  const cancelled = boot({ prompt: null });
-  cancelled.$('#field-vendor').value = '__new';
-  cancelled.$('#field-vendor').dispatchEvent(new cancelled.w.Event('change', { bubbles: true }));
-  assert.equal(cancelled.$('#field-vendor').value, '');
-  assert.equal(cancelled.stored(), null);
-});
-
-test('a row picks, adds a second, changes and removes vendors; the chips say who', () => {
-  const h = boot({ seed: { [KEY]: docV([vendor({ id: 'ace', name: 'Ace' }), vendor({ id: 'zed', name: 'Zed' })], [project({ id: 'p', title: 'Fence' })]) }, prompt: 'Cy Concrete' });
-  assert.equal(h.$('#backlog [data-pick="p"]').textContent, 'vendor +');
-  pickOn(h, '#backlog [data-pick="p"]', 'ace');
-  assert.deepEqual(chips(h, 'backlog', 'p'), ['Ace']);
-  assert.deepEqual(h.stored().projects[0].vendor_ids, ['ace']);
-  pickOn(h, '#backlog .chip.pick', 'zed');
-  assert.deepEqual(chips(h, 'backlog', 'p'), ['Ace', 'Zed']);
-  pickOn(h, '#backlog .chip.pick', 'ace');   // already there: not doubled
-  assert.deepEqual(h.stored().projects[0].vendor_ids, ['ace', 'zed']);
-  pickOn(h, '#backlog [data-vendor="ace"]', '__new');   // change Ace to a new vendor, made on the spot
-  assert.deepEqual(chips(h, 'backlog', 'p'), ['Zed', 'Cy Concrete']);
-  assert.equal(h.stored().vendors.length, 3);
-  pickOn(h, '#backlog [data-vendor="zed"]', '');   // "Remove"
-  assert.deepEqual(chips(h, 'backlog', 'p'), ['Cy Concrete']);
-  assert.equal(h.w.askDeleteVendor(h.stored().vendors.find(v => v.name === 'Cy Concrete').id), false, 'the D2a guard is reached');
-  h.click('#backlog .chip.pick');
-  h.$('#backlog select.picker').dispatchEvent(new h.w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
-  assert.equal(h.$('select.picker'), null, 'Escape closes the picker unchanged');
-  assert.deepEqual(chips(h, 'backlog', 'p'), ['Cy Concrete']);
-});
-
-test('Active rows pick too; Completed shows the chips read-only; a tap elsewhere closes an open picker', () => {
-  const h = boot({ seed: { [KEY]: docV([vendor({ id: 'ace', name: 'Ace' })], [project({ id: 'a', title: 'Roof', status: 'activated', vendor_ids: ['ace'] }), project({ id: 'c', title: 'Old', status: 'completed', completed_at: '2026-03-01T10:00:00.000Z', vendor_ids: ['ace'] })]) } });
-  assert.deepEqual(chips(h, 'active', 'a'), ['Ace']);
-  pickOn(h, '#active [data-vendor="ace"]', '');
-  assert.deepEqual(h.stored().projects.find(p => p.id === 'a').vendor_ids, []);
-  h.click('#tab-completed');
-  assert.deepEqual(chips(h, 'completed', 'c'), ['Ace']);
-  assert.equal(h.$('#completed [data-pick]'), null);
-  h.click('#tab-active');
-  h.click('#active .chip.pick');
-  assert.ok(h.$('#active select.picker'));
-  h.$('h1').dispatchEvent(new h.w.Event('pointerdown', { bubbles: true }));
-  assert.equal(h.$('select.picker'), null);
-});
-
-test('a vendor the seed never knew shows as ? and the links survive a reload', () => {
-  const first = boot({ seed: { [KEY]: docV([vendor({ id: 'ace', name: 'Ace' })], [project({ id: 'p', vendor_ids: ['ace', 'gone'] })]) } });
-  assert.deepEqual(chips(first, 'backlog', 'p'), ['Ace', '?']);
-  const again = boot({ seed: { [KEY]: first.stored() } });
-  assert.deepEqual(again.stored().projects[0].vendor_ids, ['ace', 'gone']);
-});
-
-/* ---- the vendor page (D6) ---- */
+/* ---- the vendor page (D6, grouped by month since D9b-1) ---- */
 
 const PAGE_DOC = () => docV(
   [vendor({ id: 'ace', name: 'Ace Electric', category: 'Electrician', phone: '555-0100' }), vendor({ id: 'idle', name: 'Idle Co' })],
   [
-    project({ id: 'a', title: 'Panel upgrade', status: 'activated', effort: 'L', estimated_cost: 2400, vendor_ids: ['ace'] }),
-    project({ id: 'b', title: 'Outlet in garage', effort: 'S', estimated_cost: 150, vendor_ids: ['ace'] }),
-    project({ id: 'b2', title: 'Porch light', priority_order: 2, vendor_ids: ['ace'] }),
+    project({ id: 'a', title: 'Panel upgrade', status: 'activated', effort: 'L', estimated_cost: 2400, vendor_ids: ['ace'], target_month: '2026-09' }),
+    project({ id: 'b', title: 'Outlet in garage', effort: 'S', estimated_cost: 150, vendor_ids: ['ace'], target_month: '2026-10' }),
+    project({ id: 'b2', title: 'Porch light', vendor_ids: ['ace'] }),
     project({ id: 'c', title: 'Fan install', status: 'completed', completed_at: '2026-03-01T10:00:00.000Z', estimated_cost: 300, vendor_ids: ['ace'] }),
     project({ id: 'd', title: 'Old rewiring', status: 'completed', completed_at: '2025-06-01T10:00:00.000Z', estimated_cost: 1000, vendor_ids: ['ace'] }),
     project({ id: 'x', title: 'Not theirs', vendor_ids: [] }),
   ]);
 const pageText = (h, sel) => [...h.w.document.querySelectorAll(sel)].map(e => e.textContent.trim());
 
-test('the chip on a vendor row opens the page: three groups, completed collapsed by year, no tabs or budget; back returns', () => {
+test('a vendor opens its page: open work by month, done collapsed by year, nothing to tap on the list; back returns', () => {
   const h = boot({ seed: { [KEY]: PAGE_DOC() } });
   h.click('#tab-vendors');
   assert.deepEqual(pageText(h, '#vendors [data-open]'), ['5 projects', 'no projects']);
   h.click('[data-open="ace"]');
   assert.equal(h.$('#view-vendor').hidden, false);
   assert.equal(h.$('#view-vendors').hidden, true);
-  assert.equal(h.$('.tabs').hidden, true);
-  assert.equal(h.$('#budget').hidden, true);
-  assert.equal(h.$('#vendor-page h2').textContent, 'Ace Electric');
-  assert.equal(h.$('#vendor-page .sub').textContent, 'Electrician · 555-0100 · Sep 19, 2026');
-  assert.deepEqual(pageText(h, '#vendor-page h3'), ['Active · 1', 'Backlog · 2', 'Completed · 2']);
-  assert.deepEqual(pageText(h, '#vendor-page li .t'), ['Panel upgrade', 'Outlet in garage', 'Porch light', 'Fan install', 'Old rewiring']);
-  assert.deepEqual(pageText(h, '#vendor-page li .c'), ['$2,400', '$150', '—', '$300', '$1,000']);
-  assert.deepEqual(pageText(h, '#vendor-page h4'), ['2026', '2025']);
+  assert.equal(h.$('#tab-vendors').getAttribute('aria-selected'), 'true');
+  assert.equal(h.$('#vendor-page h1').textContent, 'Ace Electric');
+  assert.equal(h.$('#vendor-page .vsub').textContent, 'Electrician · 555-0100 · Sep 19, 2026');
+  assert.deepEqual(pageText(h, '#vendor-page .sechead h2'), ['September 2026', 'October 2026', 'No month yet', 'Done · 2']);
+  assert.deepEqual(pageText(h, '#vendor-page .title'), ['Panel upgrade', 'Outlet in garage', 'Porch light', 'Fan install', 'Old rewiring']);
   assert.equal(h.$('#vendor-completed').open, false);
-  assert.deepEqual(pageText(h, '#vendor-totals span'), ['active $2,400', 'backlog $150', 'completed 2026 $300', 'completed 2025 $1,000']);
-  assert.equal(h.$('#vendor-page button, #vendor-page .chip'), null, 'the page itself has nothing to tap');
+  assert.deepEqual(pageText(h, '#vendor-totals span'), ['open $2,550', 'done 2026 $300', 'done 2025 $1,000']);
+  assert.equal(h.$('#vendor-page [data-project]'), null, 'the page is read-only');
   h.click('#vendor-back');
-  assert.equal(h.$('#view-vendor').hidden, true);
   assert.equal(h.$('#view-vendors').hidden, false);
-  assert.equal(h.$('.tabs').hidden, false);
-  assert.equal(h.$('#budget').hidden, false);
   h.click('[data-open="idle"]');
-  assert.deepEqual(pageText(h, '#vendor-page .none'), ['Nothing active.', 'Nothing waiting.', 'Nothing completed yet.']);
+  assert.deepEqual(pageText(h, '#vendor-page .board-empty'), ['Nothing open.', 'Nothing done yet.']);
 });
 
-test('the costs toggle hides every cost and the totals; the state holds across a re-render', () => {
+test('the costs toggle hides every cost and the totals; it holds across a re-render', () => {
   const h = boot({ seed: { [KEY]: PAGE_DOC() } });
   h.click('#tab-vendors'); h.click('[data-open="ace"]');
   h.click('#vendor-costs');
-  assert.equal(h.$('#vendor-page .c'), null);
+  assert.equal(h.$('#vendor-page .cost'), null);
   assert.equal(h.$('#vendor-totals'), null);
   assert.equal(h.$('#vendor-costs').getAttribute('aria-pressed'), 'false');
   h.click('#vendor-back'); h.click('[data-open="ace"]');
-  assert.equal(h.$('#vendor-page .c'), null, 'still hidden');
+  assert.equal(h.$('#vendor-page .cost'), null, 'still hidden');
   h.click('#vendor-costs');
-  assert.equal(pageText(h, '#vendor-page li .c').length, 5);
+  assert.equal(pageText(h, '#vendor-page .cost').length, 5);
 });
 
-test('Copy as text copies what is on screen: costs only when shown, completed only when expanded', async () => {
+test('Copy as text copies what is on screen: months as headings, costs only when shown, done only when expanded', async () => {
   const h = boot({ seed: { [KEY]: PAGE_DOC() } });
   let copied = null;
   Object.defineProperty(h.w.navigator, 'clipboard', { value: { writeText: t => { copied = t; return Promise.resolve(); } }, configurable: true });
@@ -736,8 +688,9 @@ test('Copy as text copies what is on screen: costs only when shown, completed on
   await new Promise(r => setTimeout(r, 0));
   assert.equal(copied, [
     'Ace Electric — Sep 19, 2026', '',
-    'Active', '- Panel upgrade (L) · $2,400', '',
-    'Backlog', '- Outlet in garage (S) · $150', '- Porch light · —', '',
+    'September 2026', '- Panel upgrade (L) · $2,400', '',
+    'October 2026', '- Outlet in garage (S) · $150', '',
+    'No month yet', '- Porch light · —', '',
   ].join('\n'));
   assert.equal(h.$('#status').textContent, 'Copied.');
   h.click('#vendor-costs');
@@ -747,18 +700,19 @@ test('Copy as text copies what is on screen: costs only when shown, completed on
   await new Promise(r => setTimeout(r, 0));
   assert.equal(copied, [
     'Ace Electric — Sep 19, 2026', '',
-    'Active', '- Panel upgrade (L)', '',
-    'Backlog', '- Outlet in garage (S)', '- Porch light', '',
-    'Completed 2026', '- Fan install', '',
-    'Completed 2025', '- Old rewiring', '',
+    'September 2026', '- Panel upgrade (L)', '',
+    'October 2026', '- Outlet in garage (S)', '',
+    'No month yet', '- Porch light', '',
+    'Done 2026', '- Fan install', '',
+    'Done 2025', '- Old rewiring', '',
   ].join('\n'));
-  h.click('[data-open="idle"]');
+  h.click('#vendor-back'); h.click('[data-open="idle"]');
   h.click('#vendor-copy');
   await new Promise(r => setTimeout(r, 0));
-  assert.match(copied, /Active\n  \(none\)\n\nBacklog\n  \(none\)\n$/);
+  assert.match(copied, /\n\nNothing open\.\n$/);
 });
 
-test('a page whose vendor is deleted falls back to the Vendors tab', () => {
+test('a page whose vendor is deleted falls back to the Vendors list', () => {
   const h = boot({ seed: { [KEY]: PAGE_DOC() } });
   h.click('#tab-vendors'); h.click('[data-open="idle"]');
   assert.equal(h.w.askDeleteVendor('idle'), true);

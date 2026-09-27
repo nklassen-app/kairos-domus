@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Domus — redesign directions</title>
+<!-- D9a: three looks for the same screens, made-up data only. Static, no
+     network: system fonts, no icon set, nothing loaded from elsewhere. -->
+<style>
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:#e9e9e6;color:#1d1d1b;line-height:1.4;padding:16px 12px 60px;}
+  .intro{max-width:420px;margin:0 auto 14px;}
+  .intro h1{font-size:22px;font-weight:700;letter-spacing:-.3px;}
+  .intro p{font-size:14px;color:#55554f;margin-top:6px;}
+  .picker{position:sticky;top:0;z-index:10;display:flex;gap:6px;max-width:420px;margin:0 auto 16px;background:#e9e9e6;padding:8px 0;}
+  .picker button{flex:1;font:inherit;font-size:14px;font-weight:650;padding:10px 4px;border-radius:10px;border:1.5px solid #c9c9c3;background:#fff;color:#55554f;}
+  .picker button[aria-pressed="true"]{background:#1d1d1b;border-color:#1d1d1b;color:#fff;}
+  .picker small{display:block;font-size:11px;font-weight:500;opacity:.75;}
+  .dirnote{max-width:420px;margin:0 auto 14px;font-size:14px;color:#3d3d39;}
+  .dirnote b{font-weight:700;}
+  .label{max-width:420px;margin:26px auto 8px;font-size:12px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:#6d6d66;}
+  .phone{max-width:390px;margin:0 auto;border-radius:26px;overflow:hidden;box-shadow:0 1px 2px rgba(0,0,0,.12),0 8px 28px rgba(0,0,0,.12);position:relative;min-height:560px;display:flex;flex-direction:column;}
+  .scr{flex:1;padding:18px 16px 16px;position:relative;}
+  .qs{max-width:420px;margin:34px auto 0;background:#fff;border-radius:14px;padding:16px 18px;font-size:14px;}
+  .qs h2{font-size:17px;margin-bottom:8px;}
+  .qs ol{padding-left:20px;}
+  .qs li{margin:8px 0;}
+
+  /* ---------- shared structure; each direction restyles it ---------- */
+  .top{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:14px;}
+  .top h2{font-size:26px;font-weight:700;letter-spacing:-.4px;}
+  .top .aside{font-size:13px;}
+  .sec{margin-bottom:18px;}
+  .sechead{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:8px;}
+  .sechead h3{font-size:13px;}
+  .sechead .sum{font-size:12px;font-variant-numeric:tabular-nums;}
+  .list{display:flex;flex-direction:column;}
+  .item{display:flex;align-items:center;gap:12px;}
+  .tile{flex:none;width:42px;height:42px;border-radius:8px;display:grid;place-items:center;font-size:14px;font-weight:700;}
+  .body{flex:1;min-width:0;}
+  .t{font-size:16px;font-weight:600;}
+  .sub{font-size:13px;margin-top:2px;}
+  .cost{flex:none;font-size:14px;font-variant-numeric:tabular-nums;}
+  .empty{font-size:13px;padding:6px 0;}
+  .nav{display:flex;justify-content:space-around;padding:10px 6px 14px;font-size:12px;font-weight:600;}
+  .nav span{display:flex;flex-direction:column;align-items:center;gap:4px;min-width:64px;}
+  .nav i{display:block;width:22px;height:22px;}
+  .fab{position:absolute;right:16px;bottom:14px;width:56px;height:56px;border-radius:16px;display:grid;place-items:center;font-size:30px;font-weight:300;line-height:1;}
+  .dim{position:absolute;inset:0;}
+  .sheet{position:absolute;left:0;right:0;bottom:0;border-radius:22px 22px 0 0;padding:10px 18px 20px;}
+  .grab{width:36px;height:4px;border-radius:2px;margin:0 auto 14px;}
+  .sheet h3{font-size:22px;font-weight:700;letter-spacing:-.3px;margin-bottom:12px;}
+  .field{display:flex;justify-content:space-between;align-items:center;padding:13px 0;font-size:15px;}
+  .field .k{font-size:14px;}
+  .field .v{font-weight:600;}
+  .seg{display:flex;gap:4px;}
+  .seg b{font-size:13px;padding:5px 12px;border-radius:999px;}
+  .btns{display:flex;gap:10px;margin-top:16px;}
+  .btn{flex:1;text-align:center;padding:13px;border-radius:12px;font-size:15px;font-weight:650;}
+  .vhead h2{font-size:24px;font-weight:700;letter-spacing:-.3px;}
+  .vhead .sub{font-size:14px;}
+  .vtools{display:flex;gap:8px;margin:14px 0 16px;}
+  .pill{padding:9px 14px;border-radius:999px;font-size:14px;font-weight:600;}
+  .big{font-size:40px;font-weight:750;letter-spacing:-1px;font-variant-numeric:tabular-nums;}
+  .bar{display:flex;height:12px;border-radius:6px;overflow:hidden;margin:14px 0 8px;}
+  .legend{display:flex;gap:14px;flex-wrap:wrap;font-size:13px;}
+  .legend span{display:flex;align-items:center;gap:6px;}
+  .legend i{width:10px;height:10px;border-radius:3px;display:inline-block;}
+  .stats{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin:16px 0;}
+  .stat .n{font-size:18px;font-weight:700;font-variant-numeric:tabular-nums;}
+  .stat .k{font-size:12px;}
+  .mrow{display:flex;justify-content:space-between;padding:11px 0;font-size:15px;font-variant-numeric:tabular-nums;}
+  .back{font-size:15px;font-weight:600;margin-bottom:12px;display:inline-block;}
+
+  /* ---------- A · Notes (after Google Keep) ---------- */
+  [data-dir="a"] .phone{background:#fff;color:#202124;}
+  [data-dir="a"] .top h2{font-weight:500;font-size:24px;}
+  [data-dir="a"] .top .aside,[data-dir="a"] .sechead .sum{color:#5f6368;}
+  [data-dir="a"] .sechead h3{font-weight:500;color:#5f6368;font-size:12px;letter-spacing:.8px;text-transform:uppercase;}
+  [data-dir="a"] .list{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+  [data-dir="a"] .item{flex-direction:column;align-items:flex-start;gap:8px;padding:12px 14px;border-radius:12px;border:1px solid #e0e0e0;min-height:92px;}
+  [data-dir="a"] .item.c0{background:#fff8b8;border-color:#fff8b8;}
+  [data-dir="a"] .item.c1{background:#d4e4ed;border-color:#d4e4ed;}
+  [data-dir="a"] .item.c2{background:#e2f6d3;border-color:#e2f6d3;}
+  [data-dir="a"] .item.c3{background:#fff;}
+  [data-dir="a"] .tile{display:none;}
+  [data-dir="a"] .t{font-size:15px;font-weight:500;}
+  [data-dir="a"] .sub{color:#3c4043;font-size:12.5px;}
+  [data-dir="a"] .cost{font-size:13px;color:#3c4043;}
+  [data-dir="a"] .empty{color:#9aa0a6;grid-column:1/-1;}
+  [data-dir="a"] .nav{border-top:1px solid #e8eaed;color:#5f6368;}
+  [data-dir="a"] .nav .on{color:#202124;}
+  [data-dir="a"] .nav i{border-radius:50%;border:2px solid currentColor;}
+  [data-dir="a"] .nav .on i{background:#feefc3;border-color:#feefc3;border-radius:12px;width:44px;}
+  [data-dir="a"] .fab{background:#fff;color:#202124;box-shadow:0 1px 3px rgba(60,64,67,.3),0 4px 8px rgba(60,64,67,.15);}
+  [data-dir="a"] .dim{background:rgba(32,33,36,.35);}
+  [data-dir="a"] .sheet{background:#fff8b8;}
+  [data-dir="a"] .grab{background:rgba(0,0,0,.2);}
+  [data-dir="a"] .field{border-bottom:1px solid rgba(0,0,0,.08);}
+  [data-dir="a"] .field .k{color:#5f6368;}
+  [data-dir="a"] .seg b{background:rgba(0,0,0,.06);font-weight:500;}
+  [data-dir="a"] .seg b.on{background:#202124;color:#fff8b8;}
+  [data-dir="a"] .btn{background:rgba(0,0,0,.07);}
+  [data-dir="a"] .btn.pri{background:#202124;color:#fff;}
+  [data-dir="a"] .pill{border:1px solid #dadce0;}
+  [data-dir="a"] .pill.pri{background:#202124;color:#fff;border-color:#202124;}
+  [data-dir="a"] .vhead .sub,[data-dir="a"] .stat .k,[data-dir="a"] .legend{color:#5f6368;}
+  [data-dir="a"] .stat{background:#f1f3f4;border-radius:12px;padding:10px 12px;}
+  [data-dir="a"] .bar .s{background:#5f6368;} [data-dir="a"] .bar .p{background:#fbbc04;} [data-dir="a"] .bar .r{background:#e8eaed;}
+  [data-dir="a"] .mrow{border-bottom:1px solid #e8eaed;}
+  [data-dir="a"] .back{color:#5f6368;}
+  [data-dir="a"] .big{font-weight:500;}
+
+  /* ---------- B · Shelf (after Audible) ---------- */
+  [data-dir="b"] .phone{background:#121212;color:#fff;}
+  [data-dir="b"] .top .aside,[data-dir="b"] .sechead .sum,[data-dir="b"] .sub,[data-dir="b"] .vhead .sub,[data-dir="b"] .stat .k,[data-dir="b"] .legend{color:#a8a8a8;}
+  [data-dir="b"] .sechead h3{font-size:19px;font-weight:700;letter-spacing:-.2px;}
+  [data-dir="b"] .sechead h3 em{font-style:normal;color:#f7991c;}
+  [data-dir="b"] .item{padding:10px 0;}
+  [data-dir="b"] .item + .item{border-top:1px solid #262626;}
+  [data-dir="b"] .tile.c0{background:#f7991c;color:#121212;}
+  [data-dir="b"] .tile.c1{background:#3d6fb6;}
+  [data-dir="b"] .tile.c2{background:#4a8f5a;}
+  [data-dir="b"] .tile.c3{background:#333;color:#bbb;}
+  [data-dir="b"] .cost{color:#d8d8d8;}
+  [data-dir="b"] .cost::after{content:'  ›';color:#666;}
+  [data-dir="b"] .empty{color:#6f6f6f;}
+  [data-dir="b"] .nav{background:#0b0b0b;color:#8a8a8a;}
+  [data-dir="b"] .nav .on{color:#f7991c;}
+  [data-dir="b"] .nav i{border-radius:5px;border:2px solid currentColor;}
+  [data-dir="b"] .fab{background:#f7991c;color:#121212;border-radius:50%;font-weight:500;}
+  [data-dir="b"] .dim{background:rgba(0,0,0,.6);}
+  [data-dir="b"] .sheet{background:#1f1f1f;}
+  [data-dir="b"] .grab{background:#555;}
+  [data-dir="b"] .field{border-bottom:1px solid #2c2c2c;}
+  [data-dir="b"] .field .k{color:#a8a8a8;}
+  [data-dir="b"] .field .v{color:#fff;}
+  [data-dir="b"] .field .v.link{color:#f7991c;}
+  [data-dir="b"] .seg b{background:#2c2c2c;color:#ccc;}
+  [data-dir="b"] .seg b.on{background:#f7991c;color:#121212;}
+  [data-dir="b"] .btn{background:#2c2c2c;}
+  [data-dir="b"] .btn.pri{background:#f7991c;color:#121212;}
+  [data-dir="b"] .pill{background:#2c2c2c;}
+  [data-dir="b"] .pill.pri{background:#f7991c;color:#121212;}
+  [data-dir="b"] .stat{background:#1f1f1f;border-radius:10px;padding:10px 12px;}
+  [data-dir="b"] .bar .s{background:#8a8a8a;} [data-dir="b"] .bar .p{background:#f7991c;} [data-dir="b"] .bar .r{background:#2c2c2c;}
+  [data-dir="b"] .mrow{border-bottom:1px solid #262626;}
+  [data-dir="b"] .back{color:#f7991c;}
+
+  /* ---------- C · Ledger (quiet, grouped lists) ---------- */
+  [data-dir="c"] .phone{background:#f4f1ea;color:#1f2a24;}
+  [data-dir="c"] .top h2,[data-dir="c"] .vhead h2,[data-dir="c"] .sheet h3,[data-dir="c"] .big{font-family:ui-serif,Georgia,"Noto Serif",serif;font-weight:600;letter-spacing:-.2px;}
+  [data-dir="c"] .top .aside,[data-dir="c"] .sechead .sum,[data-dir="c"] .sub,[data-dir="c"] .vhead .sub,[data-dir="c"] .stat .k,[data-dir="c"] .legend{color:#6b706a;}
+  [data-dir="c"] .sechead{padding:0 4px;}
+  [data-dir="c"] .sechead h3{font-size:14px;font-weight:650;color:#2f6b4f;}
+  [data-dir="c"] .list{background:#fff;border-radius:14px;padding:0 14px;}
+  [data-dir="c"] .item{padding:12px 0;}
+  [data-dir="c"] .item + .item{border-top:1px solid #ece8df;}
+  [data-dir="c"] .tile{width:8px;height:36px;border-radius:4px;font-size:0;}
+  [data-dir="c"] .tile.c0{background:#d9a441;} [data-dir="c"] .tile.c1{background:#5b83a6;} [data-dir="c"] .tile.c2{background:#6c9a73;} [data-dir="c"] .tile.c3{background:#d8d4ca;}
+  [data-dir="c"] .t{font-weight:550;}
+  [data-dir="c"] .cost{color:#1f2a24;}
+  [data-dir="c"] .empty{color:#a3a69f;padding:12px 0;}
+  [data-dir="c"] .nav{background:#fbfaf6;border-top:1px solid #e6e1d6;color:#8a8e87;}
+  [data-dir="c"] .nav .on{color:#2f6b4f;}
+  [data-dir="c"] .nav i{border-radius:6px;border:2px solid currentColor;}
+  [data-dir="c"] .fab{background:#2f6b4f;color:#fff;border-radius:50%;}
+  [data-dir="c"] .dim{background:rgba(31,42,36,.35);}
+  [data-dir="c"] .sheet{background:#f4f1ea;}
+  [data-dir="c"] .grab{background:#cfc9bb;}
+  [data-dir="c"] .fields{background:#fff;border-radius:14px;padding:0 14px;}
+  [data-dir="c"] .field + .field{border-top:1px solid #ece8df;}
+  [data-dir="c"] .field .k{color:#6b706a;}
+  [data-dir="c"] .field .v.link{color:#2f6b4f;}
+  [data-dir="c"] .seg b{background:#ece8df;}
+  [data-dir="c"] .seg b.on{background:#2f6b4f;color:#fff;}
+  [data-dir="c"] .btn{background:#fff;border:1px solid #e0dbcf;}
+  [data-dir="c"] .btn.pri{background:#2f6b4f;color:#fff;border-color:#2f6b4f;}
+  [data-dir="c"] .pill{background:#fff;border:1px solid #e0dbcf;}
+  [data-dir="c"] .pill.pri{background:#2f6b4f;color:#fff;border-color:#2f6b4f;}
+  [data-dir="c"] .stat{background:#fff;border-radius:12px;padding:10px 12px;}
+  [data-dir="c"] .bar .s{background:#1f2a24;} [data-dir="c"] .bar .p{background:#2f6b4f;} [data-dir="c"] .bar .r{background:#e6e1d6;}
+  [data-dir="c"] .mlist{background:#fff;border-radius:14px;padding:0 14px;}
+  [data-dir="c"] .mrow + .mrow{border-top:1px solid #ece8df;}
+  [data-dir="c"] .back{color:#2f6b4f;}
+</style>
+</head>
+<body data-dir="a">
+
+<div class="intro">
+  <h1>Domus — three directions</h1>
+  <p>The same four screens in three looks, with made-up projects. Switch looks with the buttons; scroll for the screens. Nothing here is the app yet — pick, then it gets built.</p>
+</div>
+
+<div class="picker" role="group" aria-label="Direction">
+  <button data-go="a" aria-pressed="true">A · Notes<small>after Keep</small></button>
+  <button data-go="b" aria-pressed="false">B · Shelf<small>after Audible</small></button>
+  <button data-go="c" aria-pressed="false">C · Ledger<small>quiet lists</small></button>
+</div>
+
+<p class="dirnote" id="dirnote"></p>
+
+<div class="label">1 · Plan — the one list, by month</div>
+<div class="phone" id="s-plan"></div>
+
+<div class="label">2 · Tap a project — everything is edited here</div>
+<div class="phone" id="s-sheet"></div>
+
+<div class="label">3 · A vendor — the list to share</div>
+<div class="phone" id="s-vendor"></div>
+
+<div class="label">4 · Budget — its own view</div>
+<div class="phone" id="s-budget"></div>
+
+<div class="qs">
+  <h2>What I need back</h2>
+  <ol>
+    <li><b>The look:</b> A, B or C — or "B's colours with C's lists", etc.</li>
+    <li><b>The structure, the same in all three:</b> four places at the bottom — <b>Plan · Vendors · Budget · Done</b>. Backlog and Active become one list, <b>Plan</b>, grouped by month; Activate goes. A row shows the title and one quiet line (vendor · effort) with the cost at the right; the month, vendor, effort, cost and <b>Mark done</b> all move into the sheet you get by tapping the row. Adding is the + button. Yes?</li>
+    <li><b>The budget, without Activate:</b> <i>planned</i> = open projects with a month in this year; <i>spent</i> = projects done this year; <i>remaining</i> = budget − both. Projects with no month show below as "not planned yet" and don't count. Yes?</li>
+  </ol>
+</div>
+
+<script>
+// Made-up household data — no real names, vendors or prices.
+const V = {
+  nh: { name: 'Northside Handyman', short: 'NH', c: 0, cat: 'Handyman', phone: '555-0142' },
+  be: { name: 'Brightline Electric', short: 'BE', c: 1, cat: 'Electrician', phone: '555-0178' },
+  ey: { name: 'Evergreen Yard Co', short: 'EY', c: 2, cat: 'Yard', phone: '555-0115' },
+  diy: { name: 'DIY', short: '—', c: 3 },
+};
+const P = [
+  { t: 'Replace two fence boards', v: 'nh', e: 'S', cost: 180, m: 'this' },
+  { t: 'Re-caulk upstairs tub', v: 'nh', e: 'S', cost: 120, m: 'this' },
+  { t: 'Porch light won’t switch off', v: 'be', e: 'S', cost: 150, m: 'this' },
+  { t: 'Fall gutter clean-out', v: 'ey', e: 'M', cost: 320, m: 'next' },
+  { t: 'Patch hallway drywall', v: 'nh', e: 'M', cost: 400, m: 'next' },
+  { t: 'Add outlet in garage', v: 'be', e: 'M', cost: 380, m: 'quarter', mo: 'Nov' },
+  { t: 'Paint front door', v: 'diy', e: 'M', cost: 90, m: 'quarter', mo: 'Dec' },
+  { t: 'Regrade side yard', v: 'ey', e: 'L', cost: 2400, m: 'later' },
+  { t: 'New attic insulation', v: 'diy', e: 'L', cost: null, m: 'later' },
+];
+const GROUPS = [['this', 'This month', 'September'], ['next', 'Next month', 'October'], ['quarter', 'Next quarter', 'Nov – Dec'], ['later', 'Later', 'no month yet']];
+const $ = s => document.querySelector(s);
+const money = n => n == null ? 'no cost' : '$' + n.toLocaleString('en-US');
+const sum = l => l.reduce((s, p) => s + (p.cost || 0), 0);
+
+function item(p){
+  const v = V[p.v];
+  const who = v.name === 'DIY' ? 'DIY' : v.name;
+  const when = p.mo ? `${p.mo} · ` : '';
+  return `<div class="item c${v.c}"><span class="tile c${v.c}">${v.short}</span>
+    <div class="body"><div class="t">${p.t}</div><div class="sub">${when}${who} · ${p.e}</div></div>
+    <span class="cost">${money(p.cost)}</span></div>`;
+}
+function nav(on){
+  return `<div class="nav">${['Plan', 'Vendors', 'Budget', 'Done'].map(n => `<span class="${n === on ? 'on' : ''}"><i></i>${n}</span>`).join('')}</div>`;
+}
+function plan(limit){
+  return GROUPS.map(([g, h, range]) => {
+    const l = P.filter(p => p.m === g);
+    const shown = limit ? l.slice(0, limit) : l;
+    return `<div class="sec"><div class="sechead"><h3>${h}${g === 'this' ? ' <em>·</em>' : ''}</h3><span class="sum">${range}${l.length ? ' · ' + money(sum(l)) : ''}</span></div>
+      <div class="list">${shown.map(item).join('') || '<div class="empty">Nothing planned</div>'}</div></div>`;
+  }).join('');
+}
+
+function render(){
+  $('#s-plan').innerHTML = `<div class="scr" style="padding-bottom:84px"><div class="top"><h2>Plan</h2><span class="aside">9 open · Sep 27</span></div>${plan()}<div class="fab">+</div></div>${nav('Plan')}`;
+
+  $('#s-sheet').innerHTML = `<div class="scr" style="min-height:640px"><div class="top"><h2>Plan</h2><span class="aside">9 open</span></div>${plan(2)}
+    <div class="dim"></div>
+    <div class="sheet"><div class="grab"></div><h3>Patch hallway drywall</h3>
+      <div class="fields">
+        <div class="field"><span class="k">Month</span><span class="v link">October 2026 ›</span></div>
+        <div class="field"><span class="k">Vendor</span><span class="v link">Northside Handyman ›</span></div>
+        <div class="field"><span class="k">Effort</span><span class="seg"><b>S</b><b class="on">M</b><b>L</b></span></div>
+        <div class="field"><span class="k">Estimated cost</span><span class="v">$400</span></div>
+        <div class="field"><span class="k">Notes</span><span class="v link">Add ›</span></div>
+      </div>
+      <div class="btns"><span class="btn">Delete</span><span class="btn pri">Mark done</span></div>
+    </div></div>${nav('Plan')}`;
+
+  const mine = P.filter(p => p.v === 'nh');
+  $('#s-vendor').innerHTML = `<div class="scr"><span class="back">‹ Vendors</span>
+    <div class="vhead"><h2>Northside Handyman</h2><div class="sub">Handyman · 555-0142</div></div>
+    <div class="vtools"><span class="pill pri">Share list</span><span class="pill">Call</span><span class="pill">Costs: on</span></div>
+    <div class="sec"><div class="sechead"><h3>September</h3><span class="sum">${money(sum(mine.filter(p => p.m === 'this')))}</span></div><div class="list">${mine.filter(p => p.m === 'this').map(item).join('')}</div></div>
+    <div class="sec"><div class="sechead"><h3>October</h3><span class="sum">${money(sum(mine.filter(p => p.m === 'next')))}</span></div><div class="list">${mine.filter(p => p.m === 'next').map(item).join('')}</div></div>
+    <div class="sec"><div class="sechead"><h3>Done · 4</h3><span class="sum">show ›</span></div></div>
+  </div>${nav('Vendors')}`;
+
+  const budget = 20000, spent = 6400;
+  const planned = sum(P.filter(p => p.m !== 'later'));
+  const rem = budget - spent - planned;
+  const pct = n => (n / budget * 100).toFixed(1) + '%';
+  const later = P.filter(p => p.m === 'later');
+  $('#s-budget').innerHTML = `<div class="scr"><div class="top"><h2>Budget</h2><span class="aside">2026</span></div>
+    <div class="sub">Remaining of ${money(budget)}</div><div class="big">${money(rem)}</div>
+    <div class="bar"><span class="s" style="width:${pct(spent)}"></span><span class="p" style="width:${pct(planned)}"></span><span class="r" style="flex:1"></span></div>
+    <div class="legend"><span><i></i>spent</span><span><i></i>planned</span><span><i></i>left</span></div>
+    <div class="stats"><div class="stat"><div class="n">${money(spent)}</div><div class="k">spent · 11 done</div></div><div class="stat"><div class="n">${money(planned)}</div><div class="k">planned · 7</div></div><div class="stat"><div class="n">${money(rem)}</div><div class="k">left</div></div></div>
+    <div class="sechead"><h3>By month</h3></div>
+    <div class="mlist">${GROUPS.slice(0, 3).map(([g, , r]) => `<div class="mrow"><span>${r}</span><b>${money(sum(P.filter(p => p.m === g)))}</b></div>`).join('')}
+      <div class="mrow"><span>Not planned yet · ${later.length}</span><span>${money(sum(later))} + 1 without a cost</span></div></div>
+  </div>${nav('Budget')}`;
+  // legend swatches take the bar's colours
+  document.querySelectorAll('.legend i').forEach((el, k) => { const src = document.querySelector('#s-budget .bar').children[k]; el.style.background = getComputedStyle(src).backgroundColor; });
+}
+
+const NOTES = {
+  a: '<b>A · Notes.</b> Light and soft, like Keep: every project is its own card, tinted by vendor, two to a row. Friendly and scannable; the least like a spreadsheet. Costs are quieter; long titles wrap inside the card.',
+  b: '<b>B · Shelf.</b> Dark, like Audible: strong section headings, one orange accent, each row led by the vendor’s coloured tile so you see who at a glance. The most structure and contrast; best in the evening, busiest in daylight.',
+  c: '<b>C · Ledger.</b> Calm and warm: grouped white lists on paper, a thin colour mark per vendor, serif headings, one green accent. Most room per row, the costs line up in a column. The most "household book".',
+};
+function go(d){
+  document.body.dataset.dir = d;
+  document.querySelectorAll('[data-go]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.go === d)));
+  $('#dirnote').innerHTML = NOTES[d];
+  render();
+}
+document.querySelectorAll('[data-go]').forEach(b => b.addEventListener('click', () => go(b.dataset.go)));
+go('a');
+</script>
+</body>
+</html>

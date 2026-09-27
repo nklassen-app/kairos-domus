@@ -1,4 +1,4 @@
-const CACHE = 'domus-v6';   // D7: months instead of position   // bump on EVERY content change, and the .ver marker in index.html with it
+const CACHE = 'domus-v7';   // D9b-1: one list, the sheet, Budget its own view   // bump on EVERY content change, and the .ver marker in index.html with it
 const ASSETS = ['.', 'index.html', 'manifest.webmanifest', 'icon.svg'];
 
 self.addEventListener('install', e => {

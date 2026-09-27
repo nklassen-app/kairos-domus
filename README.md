@@ -1,9 +1,9 @@
 # Domus
 
-The household projects backlog: one prioritized list of home-improvement work
-with an estimated cost per project and the year's budget at the top — what is
-committed, what is spent, what is left. Projects are activated deliberately,
-completed with a date, and kept; the vendors who do the work have a directory. Not a chore app: mundane tasks live on the
+The household projects backlog: one list of home-improvement work planned by
+month, with an estimated cost per project and the year's budget in its own
+view — what is planned, what is spent, what is left. Projects are completed
+with a date and kept; the vendors who do the work have a directory. Not a chore app: mundane tasks live on the
 Whiteboard and never enter here.
 
 Local-first single page, no build step, no dependencies, no account. Hosted on
@@ -16,62 +16,65 @@ backlog*.
 
 ## The rules
 
-1. A project enters only through the Add field, by title, into the **Backlog**,
-   under *later* (no month). Month, effort (tap the chip to cycle — · S · M ·
-   L) and estimated cost (tap to edit) are set on the row, later, or never.
-2. The **target month** is the priority, not position. Every Backlog and
-   Active row carries a month chip: tap it to pick this month or one of the
-   eleven after it, or *later* (no month). The backlog is grouped against
-   today — **this month** (a month already past stays here, overdue) ·
-   **next month** · **next quarter** (the months after next month through
-   the end of the next calendar quarter) · **later** (no month, or further
-   out) — so nothing needs moving on the first of the month. Empty groups
-   keep their heading, greyed. Within a group: earlier month first, then
-   newest last. Active is sorted the same way. `priority_order` stays in
-   old records; nothing reads it.
-3. A project's moves are Backlog → **Active** (the Activate button — one
-   deliberate tap, a commitment) and Active → **Completed** (Done, with the
-   date). Completed is newest first, read-only, and never deleted. There is
-   no way back from Active to Backlog.
-4. Titles are edited in place (tap). Saving empty text keeps the original, so
-   editing can never delete. An empty cost *clears* the cost — the project
-   then counts as zero and is counted as "without a cost yet".
-5. The only delete is hold-a-backlog-row, then confirm. Active projects are
-   completed, not deleted.
-6. The budget line is always computed from estimated costs, never stored:
-   committed = everything active, spent = everything completed in the budget
-   year, remaining = budget − committed − spent. The budget figure is set by
-   tapping it; the year is the current one.
-7. **Vendors** are records of their own (name, category, phone, email,
-   website, notes), added by name on the Vendors tab and edited in place:
+Four places at the bottom: **Plan · Vendors · Budget · Done** (D9b-1).
+
+1. A project enters through the **+** button on Plan: a sheet opens with an
+   empty title; Add saves it (a month, vendor, effort and cost can be set
+   first, or later, or never). An empty title adds nothing.
+2. **Plan is the one list** of open projects, and the **target month** is the
+   priority, not position. It is grouped against today — **this month** (a
+   month already past stays here, overdue) · **next month** · **next
+   quarter** (the months after next month through the end of the next
+   calendar quarter) · **later** (no month, or further out) — so nothing
+   needs moving on the first of the month. Empty groups keep their heading,
+   greyed. Within a group: earlier month first, then newest last. There is
+   no Backlog/Active split and no Activate: a project is open or done.
+   Old records keep whatever `status` they had (`backlog`, `activated`);
+   every status but `completed` is open. `priority_order` stays in old
+   records; nothing reads it.
+3. A row is the title, one quiet line (the month where the group does not
+   say it · the vendors, or DIY · the effort) and the cost. **Tapping a row
+   opens its sheet**, where everything is edited: the title (saving empty
+   keeps the original), the month (this month and the eleven after it, or
+   later; a past month stays offered while it is the project's), vendors,
+   effort (— · S · M · L), estimated cost (empty clears it; a non-number
+   leaves it) and notes. Each control saves on its own; Close, a tap
+   outside or Escape closes the sheet.
+4. **Mark done** in the sheet completes a project with the date; it moves to
+   **Done**, grouped by year, newest first, read-only, and never deleted.
+   **Delete** in the sheet removes an open project after a confirm.
+5. **Budget** is its own view, always computed, never stored: *planned* =
+   open projects with a target month in the budget year (a past month still
+   counts); *spent* = projects done in the budget year; *remaining* =
+   budget − planned − spent. Missing costs count as zero and are counted.
+   Planned is listed by month; open projects with no month ("not planned
+   yet") or a month in another year are shown apart and not counted. The
+   budget figure is set by tapping it; the year is the current one.
+6. **Vendors** are records of their own (name, category, phone, email,
+   website, notes), added by name on the Vendors view and edited in place:
    tap the name or a field label to edit, tap a phone, email or website to
    use it. Hold a row to delete — a vendor a project still names cannot be
    deleted. **Projects name vendors** by id — zero, one or several; none
-   means DIY. The Add field has a vendor dropdown for the new project, and
-   every Backlog or Active row carries the vendors as chips: tap a chip to
-   change or remove that vendor, the dashed chip to add one; both pickers
-   offer "+ New vendor…", which asks for a name and creates the vendor on
-   the spot. Completed rows show their chips read-only. The "N projects"
-   button on a vendor row opens the **vendor page**: everything that names
-   the vendor — Active, Backlog, Completed collapsed by year — read-only
-   and without the budget line, so a screenshot can go to the vendor. The
-   costs toggle hides costs and totals for that screenshot; Copy as text
-   copies what is on screen. The list can also be **imported** from
-   JSON on the Vendors tab (a file or pasted text): a bare list, the app's
+   means DIY. In a project's sheet, the vendor list adds one (or "+ New
+   vendor…", which asks for a name and creates it) and tapping a vendor's
+   chip removes it. The "N projects" button on a vendor row opens the
+   **vendor page**: open work grouped by month, Done collapsed by year —
+   read-only and without the budget, so a screenshot can go to the vendor.
+   The costs toggle hides costs and totals for that screenshot; Copy as
+   text copies what is on screen. The list can also be **imported** from
+   JSON on the Vendors view (a file or pasted text): a bare list, the app's
    own `vendors`, or the household seed's `contacts` — extra fields fold
    into notes, a name already present is skipped. The seed is real contact
    data: it is ignored (`*seed*.json`) and never committed.
-8. Nothing is scheduled outside the app (Rule 11 of the spec) — the app is
+7. Nothing is scheduled outside the app (Rule 11 of the spec) — the app is
    the one place vendor work is planned from.
-9. State is one JSON document in `localStorage` under `domus:v1`, on one
+8. State is one JSON document in `localStorage` under `domus:v1`, on one
    device: `{ projects: [...], vendors: [...], budget: { year, amount,
-   currency } }`. Every
-   project carries the spec's §4 fields from day one, the unused ones empty
-   (`vendor_ids`, `dependency_ids`, `scheduled_*`, `calendar_event_id`), and
-   `target_month` (`YYYY-MM` or null, D7 — records written before it gain
-   it as null on load), so
-   later stories add to the record without restructuring it. No backup, no
-   sync.
+   currency } }`. Every project carries the spec's §4 fields from day one,
+   the unused ones empty (`dependency_ids`, `scheduled_*`,
+   `calendar_event_id`), and `target_month` (`YYYY-MM` or null, D7 —
+   records written before it gain it as null on load), so later stories
+   add to the record without restructuring it. No backup, no sync.
 
 ## Run locally
 
