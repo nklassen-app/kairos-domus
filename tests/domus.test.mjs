@@ -276,7 +276,46 @@ test('Mark done completes the project with the date; it leaves Plan for Done, by
   assert.deepEqual(h.titles('done'), ['A', 'Mid', 'Old']);
   assert.deepEqual(h.$$('#done .sechead h2').map(e => e.textContent), ['2026', '2025']);
   assert.match(h.$('#done').textContent, /Sep 19, 2026/);
-  assert.equal(h.$('#done [data-project], #done button'), null, 'done rows are read-only');
+});
+
+/* ---- reopen: a done project can come back ---- */
+
+test('Mark done shows a toast with Undo; Undo puts the project back in Plan exactly as it was', () => {
+  const h = boot({ seed: { [KEY]: docV([vendor({ id: 'ace', name: 'Ace' })], [project({ id: 'a', title: 'A', target_month: '2026-09', effort: 'M', estimated_cost: 300, vendor_ids: ['ace'] })]) } });
+  h.open('a'); h.click('#s-done');
+  assert.equal(h.$('#toast').hidden, false);
+  assert.equal(h.$('#toast-text').textContent, 'Done: A');
+  assert.equal(h.$('#toast-undo').hidden, false);
+  h.click('#toast-undo');
+  const a = h.stored().projects[0];
+  assert.equal(a.status, 'backlog');
+  assert.equal(a.completed_at, null);
+  assert.deepEqual([a.target_month, a.effort, a.estimated_cost, a.vendor_ids], ['2026-09', 'M', 300, ['ace']]);
+  assert.deepEqual(groupsOf(h).this.titles, ['A']);
+  assert.equal(h.$('#toast-undo').hidden, true, 'the confirmation carries no second Undo');
+});
+
+test('a done project opens read-only from Done, and Reopen brings it back to Plan', () => {
+  const seed = doc([project({ id: 'y', title: 'Y', status: 'completed', completed_at: '2026-03-01T09:00:00.000Z', estimated_cost: 200, effort: 'S' })], { year: 2026, amount: 1000, currency: 'USD' });
+  const h = boot({ seed: { [KEY]: seed } });
+  h.click('#tab-done'); h.open('y');
+  assert.equal(h.sheetOpen(), true);
+  assert.equal(h.$('#s-when').textContent, 'Done Mar 1, 2026');
+  assert.equal(h.$('#s-done'), null);
+  assert.equal(h.$('#s-delete'), null, 'done projects are never deleted');
+  for (const sel of ['#s-title', '#s-month', '#s-cost', '#s-notes', '[data-eff="S"]']) assert.equal(h.$(sel).disabled, true, sel);
+  h.click('[data-eff="L"]');
+  h.set('s-cost', '999');
+  assert.deepEqual(h.stored(), seed, 'nothing in a done project changes');
+  h.click('#tab-budget');
+  assert.equal(h.figures().spent, '$200');
+  h.click('#tab-done'); h.open('y'); h.click('#s-reopen');
+  assert.equal(h.sheetOpen(), false);
+  assert.equal(h.$('#tab-plan').getAttribute('aria-selected'), 'true');
+  assert.deepEqual(h.titles('plan'), ['Y']);
+  assert.equal(h.stored().projects[0].completed_at, null);
+  h.click('#tab-budget');
+  assert.deepEqual([h.figures().spent, h.$('#not-planned b').textContent], ['$0', '$200'], 'reopened without a month: not planned yet');
 });
 
 test('Delete asks, then removes an open project; a done project is never deleted', () => {

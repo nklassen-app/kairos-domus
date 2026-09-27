@@ -41,7 +41,10 @@ Four places at the bottom: **Plan · Vendors · Budget · Done** (D9b-1).
    leaves it) and notes. Each control saves on its own; Close, a tap
    outside or Escape closes the sheet.
 4. **Mark done** in the sheet completes a project with the date; it moves to
-   **Done**, grouped by year, newest first, read-only, and never deleted.
+   **Done**, grouped by year, newest first, and is never deleted. Marking
+   done is reversible: a toast offers **Undo** for a few seconds, and any
+   time later a done project's sheet (read-only) offers **Reopen**, which
+   puts it back in Plan with the month, vendors, effort and cost it had.
    **Delete** in the sheet removes an open project after a confirm.
 5. **Budget** is its own view, always computed, never stored: *planned* =
    open projects with a target month in the budget year (a past month still

@@ -153,6 +153,14 @@
   .totals{display:flex;gap:14px;flex-wrap:wrap;margin:6px 4px 0;font-size:13px;color:var(--muted);}
   .totals b{color:var(--ink);font-weight:650;}
 
+  .toast{position:fixed;left:16px;right:88px;margin:0 auto;max-width:432px;bottom:calc(84px + env(safe-area-inset-bottom));z-index:9;display:flex;align-items:center;justify-content:space-between;gap:14px;background:var(--ink);color:#fff;border-radius:12px;padding:10px 12px 10px 16px;font-size:14px;box-shadow:0 2px 10px rgba(31,42,36,.3);}
+  .toast span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .toast button{flex:none;background:none;border:none;color:#9fd3b6;font-size:14px;font-weight:700;padding:6px 4px;cursor:pointer;}
+  .sheet .when{font-size:14px;color:var(--muted);margin:-6px 0 12px;}
+  .sheet [disabled]{opacity:1;color:var(--ink);cursor:default;}
+  .sheet .seg button[disabled]:not([aria-pressed="true"]){opacity:.45;}
+  .sheet select[disabled]{appearance:none;-webkit-appearance:none;}
+  .sheet .vchip[disabled]::after{content:'';}
   .status{font-size:13px;color:var(--muted);margin:12px 4px 0;min-height:1em;}
   .ver{position:fixed;right:10px;top:6px;font-size:11px;color:var(--muted);opacity:.6;}
   :focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
@@ -203,6 +211,7 @@
   <p class="status" id="status" aria-live="polite"></p>
 </div>
 
+<div class="toast" id="toast" role="status" hidden><span id="toast-text"></span><button type="button" id="toast-undo">Undo</button></div>
 <button class="fab" id="add" type="button" aria-label="Add a project">+</button>
 
 <nav class="nav"><div class="in" role="tablist" aria-label="Views">
@@ -216,7 +225,7 @@
 <div class="sheet" id="sheet" role="dialog" aria-modal="true" aria-label="Project" hidden></div>
 
 <!-- Keep in step with CACHE in sw.js — the visible proof of which build is running. -->
-<span class="ver">domus-v7</span>
+<span class="ver">domus-v8</span>
 
 <script>
 // State: one JSON document in localStorage, on one device. No backup, no sync.
@@ -358,11 +367,10 @@ function row(p, { month = false, date = false } = {}){
   bits.push(who);
   if (p.effort) bits.push(p.effort);
   if (date && p.completed_at) bits.push(dateOf(p.completed_at));
-  const tag = date ? 'div' : 'button';
-  return `<${tag} class="item" ${date ? '' : `data-project="${p.id}" type="button"`}>
+  return `<button class="item" data-project="${p.id}" type="button">
       <span class="body"><span class="title">${esc(p.title)}</span><span class="sub" style="display:block">${esc(bits.join(' · '))}</span></span>
       <span class="cost ${p.estimated_cost == null ? 'none' : ''}">${p.estimated_cost == null ? 'no cost' : money(p.estimated_cost)}</span>
-    </${tag}>`;
+    </button>`;
 }
 
 function renderPlan(){
@@ -389,7 +397,7 @@ function renderDone(){
     const items = done.filter(p => yearOf(p.completed_at) === y);
     return `<div class="sec"><div class="sechead"><h2>${y}</h2><span class="sum">${money(sumCost(items))}</span></div>
       <div class="list">${items.map(p => row(p, { date: true })).join('')}</div></div>`;
-  }).join('') + '<p class="note">Done projects are kept. Nothing here is ever deleted.</p>';
+  }).join('') + '<p class="note">Done projects are kept and never deleted. Tap one to see it, or to reopen it if it was marked done by mistake.</p>';
 }
 
 function renderBudget(){
@@ -481,19 +489,24 @@ function renderSheet(){
   if (!p) return;
   const ids = p.vendor_ids || [];
   const free = vendors().filter(v => !ids.includes(v.id));
+  const done = !isOpen(p);   // a done project is shown read-only; its one action is Reopen
+  const off = done ? 'disabled' : '';
   $('sheet').innerHTML = `<div class="in"><div class="grab"></div><button class="close" type="button" id="s-close">${sheet === 'new' ? 'Cancel' : 'Close'}</button>
-    <input class="t" id="s-title" value="${esc(p.title)}" placeholder="What needs to get done?" aria-label="Title" autocomplete="off" enterkeyhint="done">
+    <input class="t" id="s-title" value="${esc(p.title)}" placeholder="What needs to get done?" aria-label="Title" autocomplete="off" enterkeyhint="done" ${off}>
+    ${done ? `<div class="when" id="s-when">Done ${dateOf(p.completed_at)}</div>` : ''}
     <div class="fields">
-      <label class="field"><span class="k">Month</span><select id="s-month" aria-label="Month">${monthOptions(p.target_month)}</select></label>
+      <label class="field"><span class="k">Month</span><select id="s-month" aria-label="Month" ${off}>${monthOptions(p.target_month)}</select></label>
       <div class="field"><span class="k">Vendor</span><span class="vendors">
-        ${ids.map(id => `<button class="vchip" type="button" data-unlink="${id}" aria-label="Remove ${esc(vendorName(id))}">${esc(vendorName(id))}</button>`).join('')}
-        <select id="s-vendor" aria-label="Add a vendor"><option value="">${ids.length ? '+ Add' : 'DIY — add a vendor'}</option>${free.map(v => `<option value="${v.id}">${esc(v.name)}</option>`).join('')}<option value="__new">+ New vendor…</option></select>
+        ${ids.map(id => `<button class="vchip" type="button" data-unlink="${id}" aria-label="Remove ${esc(vendorName(id))}" ${off}>${esc(vendorName(id))}</button>`).join('')}
+        ${done ? (ids.length ? '' : '<span>DIY</span>') : ''}<select id="s-vendor" aria-label="Add a vendor" ${done ? 'hidden' : ''}><option value="">${ids.length ? '+ Add' : 'DIY — add a vendor'}</option>${free.map(v => `<option value="${v.id}">${esc(v.name)}</option>`).join('')}<option value="__new">+ New vendor…</option></select>
       </span></div>
-      <div class="field"><span class="k">Effort</span><span class="seg">${EFFORTS.map(e => `<button type="button" data-eff="${e || ''}" aria-pressed="${p.effort === e}">${e || '—'}</button>`).join('')}</span></div>
-      <label class="field"><span class="k">Estimated cost</span><input id="s-cost" inputmode="decimal" placeholder="$" value="${p.estimated_cost == null ? '' : p.estimated_cost}" aria-label="Estimated cost" autocomplete="off"></label>
-      <label class="field col"><span class="k">Notes</span><textarea id="s-notes" rows="2" aria-label="Notes">${esc(p.description || '')}</textarea></label>
+      <div class="field"><span class="k">Effort</span><span class="seg">${EFFORTS.map(e => `<button type="button" data-eff="${e || ''}" aria-pressed="${p.effort === e}" ${off}>${e || '—'}</button>`).join('')}</span></div>
+      <label class="field"><span class="k">Estimated cost</span><input id="s-cost" inputmode="decimal" placeholder="$" value="${p.estimated_cost == null ? '' : p.estimated_cost}" aria-label="Estimated cost" autocomplete="off" ${off}></label>
+      <label class="field col"><span class="k">Notes</span><textarea id="s-notes" rows="2" aria-label="Notes" ${off}>${esc(p.description || '')}</textarea></label>
     </div>
-    <div class="btns">${sheet === 'new'
+    <div class="btns">${done
+      ? '<button class="btn pri" type="button" id="s-reopen">Reopen</button>'
+      : sheet === 'new'
       ? '<button class="btn" type="button" id="s-cancel">Cancel</button><button class="btn pri" type="button" id="s-add">Add</button>'
       : '<button class="btn warn" type="button" id="s-delete">Delete</button><button class="btn pri" type="button" id="s-done">Mark done</button>'}</div>
   </div>`;
@@ -552,7 +565,7 @@ function linkVendor(choice){
   commit(p); render();
 }
 function unlinkVendor(id){
-  const p = current(); if (!p) return;
+  const p = current(); if (!p || !isOpen(p)) return;
   p.vendor_ids = (p.vendor_ids || []).filter(x => x !== id);
   commit(p); render();
 }
@@ -561,7 +574,26 @@ function complete(id){
   if (!p || !isOpen(p)) return;
   p.status = 'completed'; p.completed_at = nowIso(); touch(p);
   save(); closeSheet();
-  $('status').textContent = `Done: ${p.title}`;
+  toast(`Done: ${p.title}`, id);
+}
+// Marking done is reversible: Undo on the toast right after, or Reopen
+// from the project's sheet in Done any time later. Reopening puts it back
+// in Plan with the month, vendors, effort and cost it had.
+function reopen(id){
+  const p = find(id);
+  if (!p || isOpen(p)) return;
+  p.status = 'backlog'; p.completed_at = null; touch(p);
+  save(); sheet = null; draft = null; view = 'plan'; render();
+  toast(`Back in Plan: ${p.title}`, null);
+}
+let toastTimer = null, toastUndo = null;
+function toast(text, undoId){
+  toastUndo = undoId;
+  $('toast-text').textContent = text;
+  $('toast-undo').hidden = !undoId;
+  $('toast').hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { $('toast').hidden = true; toastUndo = null; }, 8000);
 }
 // Deleting is deliberate: from the sheet, then confirm. Done projects are
 // never deleted.
@@ -821,6 +853,7 @@ document.addEventListener('toggle', e => { if (e.target.id === 'vendor-completed
 // The sheet's controls: text commits on change (Enter or leaving the field),
 // choices at once.
 $('sheet').addEventListener('change', e => {
+  if (sheet !== 'new' && !isOpen(current() || {})) return;   // a done project is read-only
   if (e.target.id === 's-title') setTitle();
   if (e.target.id === 's-cost') setCost();
   if (e.target.id === 's-notes') setNotes();
@@ -843,11 +876,13 @@ document.addEventListener('keydown', e => {
 document.addEventListener('click', e => {
   const tab = e.target.closest('[role="tab"]');    if (tab){ sheet = null; draft = null; show(tab.id.replace('tab-', '')); return; }
   const proj = e.target.closest('[data-project]'); if (proj){ openSheet(proj.dataset.project); return; }
-  const eff = e.target.closest('[data-eff]');      if (eff){ const p = current(); p.effort = eff.dataset.eff || null; commit(p); render(); return; }
+  const eff = e.target.closest('[data-eff]');      if (eff){ const p = current(); if (!isOpen(p)) return; p.effort = eff.dataset.eff || null; commit(p); render(); return; }
   const un = e.target.closest('[data-unlink]');    if (un){ unlinkVendor(un.dataset.unlink); return; }
   if (e.target.id === 's-add'){ addDraft(); return; }
   if (e.target.id === 's-cancel' || e.target.id === 's-close'){ closeSheet(); return; }
   if (e.target.id === 's-done'){ complete(sheet); return; }
+  if (e.target.id === 's-reopen'){ reopen(sheet); return; }
+  if (e.target.id === 'toast-undo'){ const id = toastUndo; clearTimeout(toastTimer); $('toast').hidden = true; toastUndo = null; if (id) reopen(id); return; }
   if (e.target.id === 's-delete'){ askDelete(sheet); return; }
   if (e.target.id === 'vendor-copy'){ copyVendor(); return; }
   if (e.target.id === 'vendor-costs'){ showCosts = !showCosts; render(); return; }
