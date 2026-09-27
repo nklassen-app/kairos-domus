@@ -37,6 +37,10 @@ This system is deliberately biased toward creative velocity and tolerates mess. 
 - A pushed secret is a **burned secret** — rotate it, don't just delete the file.
 - All repos **private** by default.
 
+## Session start — the glance
+- **Before touching any file, run `kairos-foundation/scripts/kairos_status.sh`.** It fetches first (P12), so on a device with a live `ssh-agent` this is how another device's push — the phone and the Chromebook working in parallel — shows up as "behind" before you commit on top of it, not after a rejected push. If it shows "behind" on a repo you're about to touch, pull/merge first.
+- Applies the same way on every device — the Chromebook, the phone, any future host. No exception for "just a quick change."
+
 ## When to stop and ask
 - Anything that would move real data into a tracked path, weaken an ignore rule, or cross the privacy boundary.
 - Anything that would build weight for a tier this app hasn't earned.
