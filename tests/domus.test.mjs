@@ -718,37 +718,38 @@ test('the costs toggle hides every cost and the totals; it holds across a re-ren
   assert.equal(pageText(h, '#vendor-page .cost').length, 5);
 });
 
-test('Copy as text copies what is on screen: months as headings, costs only when shown, done only when expanded', async () => {
-  const h = boot({ seed: { [KEY]: PAGE_DOC() } });
+test('Copy as text gives a message to send as it is: one numbered list, months in brackets, notes indented, costs only when shown, done never', async () => {
+  const doc = PAGE_DOC();
+  doc.projects.find(p => p.id === 'a').description = 'Main panel in the basement\n\n  200A, the old one is 100A';
+  doc.projects.push(project({ id: 'far', title: 'Attic fan', vendor_ids: ['ace'], target_month: '2027-11' }));
+  const h = boot({ seed: { [KEY]: doc } });
   let copied = null;
   Object.defineProperty(h.w.navigator, 'clipboard', { value: { writeText: t => { copied = t; return Promise.resolve(); } }, configurable: true });
   h.click('#tab-vendors'); h.click('[data-open="ace"]');
-  h.click('#vendor-copy');
-  await new Promise(r => setTimeout(r, 0));
-  assert.equal(copied, [
-    'Ace Electric — Sep 19, 2026', '',
-    'September 2026', '- Panel upgrade (L) · $2,400', '',
-    'October 2026', '- Outlet in garage (S) · $150', '',
-    'No month yet', '- Porch light · —', '',
-  ].join('\n'));
-  assert.equal(h.$('#status').textContent, 'Copied.');
-  h.click('#vendor-costs');
   h.$('#vendor-completed').open = true;
   h.$('#vendor-completed').dispatchEvent(new h.w.Event('toggle'));
   h.click('#vendor-copy');
   await new Promise(r => setTimeout(r, 0));
   assert.equal(copied, [
-    'Ace Electric — Sep 19, 2026', '',
-    'September 2026', '- Panel upgrade (L)', '',
-    'October 2026', '- Outlet in garage (S)', '',
-    'No month yet', '- Porch light', '',
-    'Done 2026', '- Fan install', '',
-    'Done 2025', '- Old rewiring', '',
-  ].join('\n'));
+    'Hi, here are the jobs I have for you:', '',
+    '1. Panel upgrade (September) — $2,400',
+    '   Main panel in the basement',
+    '   200A, the old one is 100A',
+    '2. Outlet in garage (October) — $150',
+    '3. Attic fan (November 2027)',
+    '4. Porch light', '',
+    'Thanks!', '',
+  ].join('\n'), 'done work stays out even when Done is expanded; a year or more away carries its year');
+  assert.equal(h.$('#status').textContent, 'Copied.');
+  h.click('#vendor-costs');
+  h.click('#vendor-copy');
+  await new Promise(r => setTimeout(r, 0));
+  assert.match(copied, /^1\. Panel upgrade \(September\)$/m);
+  assert.doesNotMatch(copied, /\$/, 'no cost anywhere once costs are hidden');
   h.click('#vendor-back'); h.click('[data-open="idle"]');
   h.click('#vendor-copy');
   await new Promise(r => setTimeout(r, 0));
-  assert.match(copied, /\n\nNothing open\.\n$/);
+  assert.equal(copied, 'Hi, I have no open jobs for you right now.\n');
 });
 
 test('a page whose vendor is deleted falls back to the Vendors list', () => {

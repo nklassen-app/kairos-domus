@@ -225,7 +225,7 @@
 <div class="sheet" id="sheet" role="dialog" aria-modal="true" aria-label="Project" hidden></div>
 
 <!-- Keep in step with CACHE in sw.js — the visible proof of which build is running. -->
-<span class="ver">domus-v8</span>
+<span class="ver">domus-v9</span>
 
 <script>
 // State: one JSON document in localStorage, on one device. No backup, no sync.
@@ -611,7 +611,7 @@ function askDelete(id){
 // Open projects grouped by target month (no month last), Done collapsed by
 // year at the bottom — read-only and without the budget, so a screenshot can
 // go to the vendor. Costs show for N.'s own review and hide for the share;
-// Copy as text copies exactly what is on screen.
+// Copy as text turns the open work into a message (vendorText, below).
 const names = id => p => (p.vendor_ids || []).includes(id);
 function projectCount(id){
   const n = state.projects.filter(names(id)).length;
@@ -645,17 +645,24 @@ function renderVendorPage(v){
     </details>
     ${totals}`;
 }
+// The copied text is a message to send as it is (D9c, N.'s pick 2026-09-30):
+// a greeting, the open jobs as one numbered list in the page's order, the
+// month in brackets (its year only when it is a year or more away), the
+// notes indented under the job, a sign-off. Costs only while shown; done
+// work never goes in — it is what is still to do.
+const MONTHS_LONG = MONTHS.map((m, k) => new Date(2000, k, 1).toLocaleDateString('en-US', { month: 'long' }));
+const monthSpoken = ym => { const i = monthIdx(ym); return i - nowMonth() < 12 ? MONTHS_LONG[i % 12] : monthLong(i); };
 function vendorText(id){
-  const v = findVendor(id);
-  const g = vendorGroups(id);
-  const out = [`${v.name} — ${dateOf(nowIso())}`];
-  const put = (title, items) => {
-    out.push('', title);
-    for (const p of items) out.push(`- ${p.title}${p.effort ? ` (${p.effort})` : ''}${showCosts ? ` · ${money(p.estimated_cost)}` : ''}`);
-  };
-  if (!g.months.length) out.push('', 'Nothing open.');
-  for (const m of g.months) put(m.label, m.items);
-  if (completedOpen) for (const y of g.years) put(`Done ${y}`, g.inYear(y));
+  const open = vendorGroups(id).months.flatMap(m => m.items);
+  if (!open.length) return 'Hi, I have no open jobs for you right now.\n';
+  const out = ['Hi, here are the jobs I have for you:', ''];
+  open.forEach((p, k) => {
+    const when = p.target_month ? ` (${monthSpoken(p.target_month)})` : '';
+    const cost = showCosts && p.estimated_cost != null ? ` — ${money(p.estimated_cost)}` : '';
+    out.push(`${k + 1}. ${p.title}${when}${cost}`);
+    for (const l of (p.description || '').split('\n').map(l => l.trim()).filter(Boolean)) out.push(`   ${l}`);
+  });
+  out.push('', 'Thanks!');
   return out.join('\n') + '\n';
 }
 function copyVendor(){

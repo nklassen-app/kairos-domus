@@ -64,7 +64,9 @@ Four places at the bottom: **Plan · Vendors · Budget · Done** (D9b-1).
    **vendor page**: open work grouped by month, Done collapsed by year —
    read-only and without the budget, so a screenshot can go to the vendor.
    The costs toggle hides costs and totals for that screenshot; Copy as
-   text copies what is on screen. The list can also be **imported** from
+   text gives a message to paste to the vendor as it is — a greeting, the
+   open jobs numbered with their month and notes, a sign-off; costs only
+   while shown, done work never. The list can also be **imported** from
    JSON on the Vendors view (a file or pasted text): a bare list, the app's
    own `vendors`, or the household seed's `contacts` — extra fields fold
    into notes, a name already present is skipped. The seed is real contact
