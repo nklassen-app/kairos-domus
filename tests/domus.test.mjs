@@ -752,6 +752,20 @@ test('Copy as text gives a message to send as it is: one numbered list, months i
   assert.equal(copied, 'Hi, I have no open jobs for you right now.\n');
 });
 
+test('projects are cards tinted by their first vendor: the same vendor, the same tint, on Plan and its page; no vendor stays untinted', () => {
+  const h = boot({ seed: { [KEY]: PAGE_DOC() } });
+  const tint = el => [...el.classList].find(c => /^t\d$/.test(c)) || '';
+  const cards = [...h.w.document.querySelectorAll('#plan .list.cards [data-project]')];
+  assert.ok(cards.length >= 3, 'Plan shows its projects as cards');
+  const byId = id => h.$(`#plan [data-project="${id}"]`);
+  assert.ok(tint(byId('a')), 'a vendor gives a tint');
+  assert.equal(tint(byId('a')), tint(byId('b')), 'same vendor, same tint');
+  assert.equal(tint(byId('x')), '', 'no vendor, no tint');
+  h.click('#tab-vendors'); h.click('[data-open="ace"]');
+  const page = [...h.w.document.querySelectorAll('#vendor-page .list.cards .item')];
+  assert.ok(page.length && page.every(el => tint(el) === tint(byId('a'))), 'the vendor page wears the same tint');
+});
+
 test('a page whose vendor is deleted falls back to the Vendors list', () => {
   const h = boot({ seed: { [KEY]: PAGE_DOC() } });
   h.click('#tab-vendors'); h.click('[data-open="idle"]');

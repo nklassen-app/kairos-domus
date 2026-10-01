@@ -1,4 +1,4 @@
-const CACHE = 'domus-v9';   // D9c: the copied text is a message to send as it is   // bump on EVERY content change, and the .ver marker in index.html with it
+const CACHE = 'domus-v10';   // D9b-2a: projects as cards, tinted by vendor   // bump on EVERY content change, and the .ver marker in index.html with it
 const ASSETS = ['.', 'index.html', 'manifest.webmanifest', 'icon.svg'];
 
 self.addEventListener('install', e => {
