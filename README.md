@@ -54,14 +54,16 @@ Four places at the bottom: **Plan · Vendors · Budget · Done** (D9b-1).
    yet") or a month in another year are shown apart and not counted. The
    budget figure is set by tapping it; the year is the current one.
 6. **Vendors** are records of their own (name, category, phone, email,
-   website, notes), added by name on the Vendors view and edited in place:
-   tap the name or a field label to edit, tap a phone, email or website to
-   use it. Hold a row to delete — a vendor a project still names cannot be
-   deleted. **Projects name vendors** by id — zero, one or several; none
+   website, notes), added by name on the Vendors view, listed as a name and
+   one quiet line (category · phone) with a mark in the vendor's tint.
+   Tapping a vendor opens its sheet: every field edits there (an empty name
+   keeps the old one), Call / Email / Website use the details, Delete
+   removes it — a vendor a project still names cannot be deleted.
+   **Projects name vendors** by id — zero, one or several; none
    means DIY. In a project's sheet, the vendor list adds one (or "+ New
    vendor…", which asks for a name and creates it) and tapping a vendor's
-   chip removes it. The "N projects" button on a vendor row opens the
-   **vendor page**: open work grouped by month, Done collapsed by year —
+   chip removes it. The "Page · N projects" button in a vendor's sheet opens
+   the **vendor page**: open work grouped by month, Done collapsed by year —
    read-only and without the budget, so a screenshot can go to the vendor.
    The costs toggle hides costs and totals for that screenshot; Copy as
    text gives a message to paste to the vendor as it is — a greeting, the

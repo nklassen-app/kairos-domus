@@ -1,4 +1,4 @@
-const CACHE = 'domus-v10';   // D9b-2a: projects as cards, tinted by vendor   // bump on EVERY content change, and the .ver marker in index.html with it
+const CACHE = 'domus-v11';   // D9b-2b: the vendors list calmed, its fields in a sheet   // bump on EVERY content change, and the .ver marker in index.html with it
 const ASSETS = ['.', 'index.html', 'manifest.webmanifest', 'icon.svg'];
 
 self.addEventListener('install', e => {

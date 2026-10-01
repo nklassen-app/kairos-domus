@@ -499,12 +499,20 @@ function typeVendor(h, name) {
   const f = h.w.document.getElementById('vendor-field'); f.value = name;
   f.dispatchEvent(new h.w.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
 }
-function editVendor(h, sel, value, key = 'Enter') {
-  h.w.document.querySelector(sel).click();
-  const input = h.w.document.querySelector('#vendors input');
-  assert.ok(input, `an input opened for ${sel}`);
+// The vendor sheet (D9b-2b): tap the row, change a field, Enter commits.
+function editVendor(h, id, field, value, key = 'Enter') {
+  if (!h.$('#sheet [data-vfield]')) h.click(`[data-vsheet="${id}"]`);
+  const input = h.$(`#vs-${field}`);
+  assert.ok(input, `the sheet shows ${field}`);
   input.value = value;
+  if (key === 'Escape'){ h.w.document.dispatchEvent(new h.w.KeyboardEvent('keydown', { key, bubbles: true })); return; }
+  if (input.tagName === 'TEXTAREA'){ input.dispatchEvent(new h.w.Event('change', { bubbles: true })); return; }
   input.dispatchEvent(new h.w.KeyboardEvent('keydown', { key, bubbles: true }));
+}
+// A vendor's page opens from its sheet.
+function openPage(h, id) {
+  h.click(`[data-vsheet="${id}"]`);
+  h.click(`#sheet [data-open="${id}"]`);
 }
 
 test('the Vendors tab is there, empty, and a document without vendors still loads', () => {
@@ -528,27 +536,33 @@ test('Enter adds a vendor by name with every field empty; the list is by name', 
   assert.equal(h.stored().vendors.length, 2);
 });
 
-test('a name edits in place; empty keeps the original; fields edit and clear; links form', () => {
+test('the vendors list is a name and one quiet line; a tap opens the sheet, where fields edit and clear, links form and an empty name keeps the old one', () => {
   const h = boot({ seed: { [KEY]: docV([vendor({ id: 'v', name: 'Ace' })]) } });
-  editVendor(h, '[data-vendor-name="v"]', 'Ace Electric');
+  h.click('#tab-vendors');
+  assert.equal(h.$('#vendors [data-vsheet="v"] .sub').textContent, 'no details yet');
+  assert.equal(h.$('#vendors input'), null, 'nothing edits on the list');
+  editVendor(h, 'v', 'name', 'Ace Electric');
   assert.deepEqual(h.titles('vendors'), ['Ace Electric']);
-  editVendor(h, '[data-vendor-name="v"]', '');
+  assert.equal(h.$('#sheet').hidden, false, 'the sheet stays open while editing');
+  editVendor(h, 'v', 'name', '');
   assert.deepEqual(h.titles('vendors'), ['Ace Electric']);
-  editVendor(h, '[data-vendor-field="v"][data-field="phone"]', '(555) 010-2030');
-  assert.equal(h.$('#vendors a[href="tel:5550102030"]').textContent, '(555) 010-2030');
-  editVendor(h, '[data-vendor-field="v"][data-field="email"]', 'ace@example.com');
-  assert.ok(h.$('#vendors a[href="mailto:ace@example.com"]'));
-  editVendor(h, '[data-vendor-field="v"][data-field="website"]', 'ace.example.com');
-  assert.ok(h.$('#vendors a[href="https://ace.example.com"]'));
-  editVendor(h, '[data-vendor-field="v"][data-field="category"]', 'Electrician');
-  editVendor(h, '[data-vendor-field="v"][data-field="notes"]', 'Licensed; came recommended.');
-  assert.equal(h.$('#vendors .notes').textContent, 'Licensed; came recommended.');
+  assert.equal(h.$('#vs-name').value, 'Ace Electric');
+  editVendor(h, 'v', 'phone', '(555) 010-2030');
+  assert.equal(h.$('#sheet a[href="tel:5550102030"]').textContent, 'Call');
+  editVendor(h, 'v', 'email', 'ace@example.com');
+  assert.ok(h.$('#sheet a[href="mailto:ace@example.com"]'));
+  editVendor(h, 'v', 'website', 'ace.example.com');
+  assert.ok(h.$('#sheet a[href="https://ace.example.com"]'));
+  editVendor(h, 'v', 'category', 'Electrician');
+  editVendor(h, 'v', 'notes', 'Licensed; came recommended.');
   const v = h.stored().vendors[0];
   assert.deepEqual([v.category, v.phone, v.email, v.website, v.notes], ['Electrician', '(555) 010-2030', 'ace@example.com', 'ace.example.com', 'Licensed; came recommended.']);
-  editVendor(h, '[data-vendor-field="v"][data-field="phone"]', '');
+  assert.equal(h.$('#vendors [data-vsheet="v"] .sub').textContent, 'Electrician · (555) 010-2030');
+  editVendor(h, 'v', 'phone', '');
   assert.equal(h.stored().vendors[0].phone, '');
-  assert.equal(h.$('#vendors a[href^="tel:"]'), null);
-  editVendor(h, '[data-vendor-field="v"][data-field="category"]', 'thrown away', 'Escape');
+  assert.equal(h.$('#sheet a[href^="tel:"]'), null);
+  editVendor(h, 'v', 'category', 'thrown away', 'Escape');
+  assert.equal(h.$('#sheet').hidden, true, 'Escape closes');
   assert.equal(h.stored().vendors[0].category, 'Electrician');
 });
 
@@ -564,14 +578,17 @@ test('askDeleteVendor: confirmed removes a free vendor; a vendor a project names
   assert.equal(no.stored().vendors.length, 2);
 });
 
-test('a hold on a vendor row asks; a hold on its link does not', async () => {
-  const h = boot({ seed: { [KEY]: docV([vendor({ id: 'v', name: 'Ace', phone: '555' })]) }, confirm: true });
-  h.$('#vendors a[href^="tel:"]').dispatchEvent(new h.w.Event('pointerdown', { bubbles: true }));
-  await new Promise(r => setTimeout(r, 700));
-  assert.deepEqual(h.titles('vendors'), ['Ace']);
-  h.$('[data-vendor-row="v"]').dispatchEvent(new h.w.Event('pointerdown', { bubbles: true }));
-  await new Promise(r => setTimeout(r, 700));
-  assert.deepEqual(h.titles('vendors'), []);
+test('Delete in the vendor sheet asks, removes and closes; a vendor a project names stays, its sheet open', () => {
+  const seed = docV([vendor({ id: 'free', name: 'Free' }), vendor({ id: 'used', name: 'Used' })], [project({ id: 'p', vendor_ids: ['used'] })]);
+  const h = boot({ seed: { [KEY]: seed }, confirm: true });
+  h.click('#tab-vendors');
+  h.click('[data-vsheet="used"]'); h.click('#vs-delete');
+  assert.equal(h.$('#sheet').hidden, false);
+  assert.match(h.$('#status').textContent, /Used is named by a project/);
+  h.click('#s-close');
+  h.click('[data-vsheet="free"]'); h.click('#vs-delete');
+  assert.equal(h.$('#sheet').hidden, true);
+  assert.deepEqual(h.titles('vendors'), ['Used']);
 });
 
 test('vendors survive a reload alongside projects and the budget', () => {
@@ -624,7 +641,9 @@ test('a seed document imports its contacts: §8 fields mapped, the rest folded i
     'subscription:', '  plan: Care plan', '  benefits: 10% off, Priority', '  scheduling: Call to book.',
   ].join('\n'));
   assert.equal(acme.created_at, '2026-09-19T10:00:00.000Z');
-  assert.ok(h.$('#vendors a[href="tel:+15550102030"]'));
+  h.click(`[data-vsheet="${acme.id}"]`);
+  assert.ok(h.$('#sheet a[href="tel:+15550102030"]'), 'the phone is callable from the sheet');
+  h.click('#s-close');
   const tbd = h.stored().vendors.find(v => v.name === 'Landscaping');   // named after its services, so they are not repeated
   assert.equal(tbd.notes, 'status: pending');
   const tutor = h.stored().vendors.find(v => v.name.startsWith('Sam'));
@@ -665,7 +684,9 @@ test('a chosen file imports the same way', async () => {
   const file = new h.w.File([JSON.stringify(SEED)], 'contacts.json', { type: 'application/json' });
   Object.defineProperty(input, 'files', { value: [file], configurable: true });
   input.dispatchEvent(new h.w.Event('change', { bubbles: true }));
-  await new Promise(r => setTimeout(r, 50));
+  // FileReader is async: wait for the status line, not a fixed delay (50 ms
+  // was flaky under load).
+  for (let t = 0; t < 100 && !h.$('#status').textContent; t++) await new Promise(r => setTimeout(r, 20));
   assert.equal(h.$('#status').textContent, 'Imported 3 vendors.');
   assert.equal(h.stored().vendors.length, 3);
 });
@@ -687,8 +708,10 @@ const pageText = (h, sel) => [...h.w.document.querySelectorAll(sel)].map(e => e.
 test('a vendor opens its page: open work by month, done collapsed by year, nothing to tap on the list; back returns', () => {
   const h = boot({ seed: { [KEY]: PAGE_DOC() } });
   h.click('#tab-vendors');
-  assert.deepEqual(pageText(h, '#vendors [data-open]'), ['5 projects', 'no projects']);
-  h.click('[data-open="ace"]');
+  assert.deepEqual(pageText(h, '#vendors .count'), ['5 projects', 'no projects']);
+  assert.equal(h.$('#vendors [data-open]'), null, 'the page opens from the sheet');
+  openPage(h, 'ace');
+  assert.equal(h.$('#sheet').hidden, true, 'opening the page closes the sheet');
   assert.equal(h.$('#view-vendor').hidden, false);
   assert.equal(h.$('#view-vendors').hidden, true);
   assert.equal(h.$('#tab-vendors').getAttribute('aria-selected'), 'true');
@@ -701,18 +724,18 @@ test('a vendor opens its page: open work by month, done collapsed by year, nothi
   assert.equal(h.$('#vendor-page [data-project]'), null, 'the page is read-only');
   h.click('#vendor-back');
   assert.equal(h.$('#view-vendors').hidden, false);
-  h.click('[data-open="idle"]');
+  openPage(h, 'idle');
   assert.deepEqual(pageText(h, '#vendor-page .board-empty'), ['Nothing open.', 'Nothing done yet.']);
 });
 
 test('the costs toggle hides every cost and the totals; it holds across a re-render', () => {
   const h = boot({ seed: { [KEY]: PAGE_DOC() } });
-  h.click('#tab-vendors'); h.click('[data-open="ace"]');
+  h.click('#tab-vendors'); openPage(h, 'ace');
   h.click('#vendor-costs');
   assert.equal(h.$('#vendor-page .cost'), null);
   assert.equal(h.$('#vendor-totals'), null);
   assert.equal(h.$('#vendor-costs').getAttribute('aria-pressed'), 'false');
-  h.click('#vendor-back'); h.click('[data-open="ace"]');
+  h.click('#vendor-back'); openPage(h, 'ace');
   assert.equal(h.$('#vendor-page .cost'), null, 'still hidden');
   h.click('#vendor-costs');
   assert.equal(pageText(h, '#vendor-page .cost').length, 5);
@@ -725,7 +748,7 @@ test('Copy as text gives a message to send as it is: one numbered list, months i
   const h = boot({ seed: { [KEY]: doc } });
   let copied = null;
   Object.defineProperty(h.w.navigator, 'clipboard', { value: { writeText: t => { copied = t; return Promise.resolve(); } }, configurable: true });
-  h.click('#tab-vendors'); h.click('[data-open="ace"]');
+  h.click('#tab-vendors'); openPage(h, 'ace');
   h.$('#vendor-completed').open = true;
   h.$('#vendor-completed').dispatchEvent(new h.w.Event('toggle'));
   h.click('#vendor-copy');
@@ -746,7 +769,7 @@ test('Copy as text gives a message to send as it is: one numbered list, months i
   await new Promise(r => setTimeout(r, 0));
   assert.match(copied, /^1\. Panel upgrade \(September\)$/m);
   assert.doesNotMatch(copied, /\$/, 'no cost anywhere once costs are hidden');
-  h.click('#vendor-back'); h.click('[data-open="idle"]');
+  h.click('#vendor-back'); openPage(h, 'idle');
   h.click('#vendor-copy');
   await new Promise(r => setTimeout(r, 0));
   assert.equal(copied, 'Hi, I have no open jobs for you right now.\n');
@@ -761,14 +784,14 @@ test('projects are cards tinted by their first vendor: the same vendor, the same
   assert.ok(tint(byId('a')), 'a vendor gives a tint');
   assert.equal(tint(byId('a')), tint(byId('b')), 'same vendor, same tint');
   assert.equal(tint(byId('x')), '', 'no vendor, no tint');
-  h.click('#tab-vendors'); h.click('[data-open="ace"]');
+  h.click('#tab-vendors'); openPage(h, 'ace');
   const page = [...h.w.document.querySelectorAll('#vendor-page .list.cards .item')];
   assert.ok(page.length && page.every(el => tint(el) === tint(byId('a'))), 'the vendor page wears the same tint');
 });
 
 test('a page whose vendor is deleted falls back to the Vendors list', () => {
   const h = boot({ seed: { [KEY]: PAGE_DOC() } });
-  h.click('#tab-vendors'); h.click('[data-open="idle"]');
+  h.click('#tab-vendors'); openPage(h, 'idle');
   assert.equal(h.w.askDeleteVendor('idle'), true);
   assert.equal(h.$('#view-vendor').hidden, true);
   assert.equal(h.$('#view-vendors').hidden, false);

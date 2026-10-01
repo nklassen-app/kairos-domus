@@ -115,30 +115,17 @@
   .mrow .k{color:var(--ink);} .mrow.muted .k,.mrow.muted b{color:var(--muted);font-weight:500;}
   .caveat{font-size:13px;color:var(--muted);margin:8px 4px 0;}
 
-  /* vendors — the list keeps its in-place editing */
+  /* vendors (D9b-2b): a name and one quiet line, the fields behind a tap */
   .capture{display:flex;gap:8px;margin-bottom:12px;}
   input.entry{flex:1;font:inherit;font-size:16px;padding:11px 13px;background:var(--panel);border:1px solid var(--edge);border-radius:10px;color:var(--ink);}
   input.entry:focus{outline:none;border-color:var(--accent);}
   .add{border:none;background:var(--accent);color:#fff;font:inherit;font-size:15px;font-weight:600;border-radius:10px;padding:0 16px;cursor:pointer;}
-  .vrow{display:flex;align-items:flex-start;gap:10px;padding:12px 0;user-select:none;-webkit-user-select:none;}
-  .vrow + .vrow{border-top:1px solid var(--hair);}
-  .vrow .main{flex:1;min-width:0;}
-  .vrow .title{font-size:16px;font-weight:550;cursor:text;}
-  .vrow .edit{width:100%;font:inherit;font-size:16px;border:none;border-bottom:1.5px solid var(--ink);background:transparent;padding:0;border-radius:0;}
-  .vrow .edit:focus{outline:none;}
-  .vrow .fields{display:flex;flex-wrap:wrap;gap:2px 12px;margin-top:4px;font-size:13px;background:none;padding:0;border-radius:0;}
-  .vrow .field{display:inline-flex;gap:5px;align-items:baseline;min-height:24px;padding:0;font-size:13px;}
-  .vrow .field + .field{border:none;}
-  .vrow .field .k{color:var(--muted);cursor:text;padding:2px 0;}
-  .vrow .field .k::after{content:':';}
-  .vrow .field .v a{color:var(--accent);text-decoration:none;}
-  .vrow .field.empty .k{color:var(--faint);}
-  .vrow .field.empty .k::after{content:' +';}
-  .vrow .field.empty .v{display:none;}
-  .vrow input:not(.edit){font:inherit;font-size:13px;width:14ch;border:none;border-bottom:1.5px solid var(--ink);background:transparent;padding:0;border-radius:0;}
-  .vrow input:focus{outline:none;}
-  .vrow .notes{font-size:13px;color:var(--muted);margin-top:2px;white-space:pre-wrap;}
-  .open{flex:none;border:1px solid var(--edge);background:var(--paper);color:var(--accent);border-radius:999px;padding:6px 12px;font-size:13px;font-weight:650;cursor:pointer;}
+  .mark{flex:none;width:6px;align-self:stretch;min-height:34px;border-radius:3px;background:var(--hair);}
+  .mark.t0{background:#d9a441;} .mark.t1{background:#5b83a6;} .mark.t2{background:#6c9a73;} .mark.t3{background:#d8d4ca;}
+  .item .count{flex:none;font-size:13px;color:var(--muted);}
+  .field input.wide{width:62%;}
+  .links{display:flex;gap:8px;flex-wrap:wrap;margin:-4px 0 12px;}
+  .links a{text-decoration:none;color:var(--accent);}
   .import{margin:14px 4px 0;}
   .import summary{font-size:13px;font-weight:600;color:var(--accent);cursor:pointer;list-style:none;padding:4px 0;}
   .import summary::-webkit-details-marker{display:none;}
@@ -192,7 +179,7 @@
       <button class="add" id="vendor-add" type="button">Add</button>
     </div>
     <div class="list" id="vendors"></div>
-    <p class="note">Tap a name or a field label to edit it; tap a phone, email or website to use it. Hold a row to delete it — a vendor a project still names cannot be deleted.</p>
+    <p class="note">Tap a vendor to see and edit its details, open its page, or delete it — a vendor a project still names cannot be deleted.</p>
     <details class="import" id="vendor-import">
       <summary>Import vendors from JSON</summary>
       <div class="body">
@@ -236,7 +223,7 @@
 <div class="sheet" id="sheet" role="dialog" aria-modal="true" aria-label="Project" hidden></div>
 
 <!-- Keep in step with CACHE in sw.js — the visible proof of which build is running. -->
-<span class="ver">domus-v10</span>
+<span class="ver">domus-v11</span>
 
 <script>
 // State: one JSON document in localStorage, on one device. No backup, no sync.
@@ -259,6 +246,7 @@ let showCosts = true;    // the vendor page's costs toggle — off for a screens
 let completedOpen = false;   // the vendor page's Done group, collapsed by default
 let sheet = null;        // null, a project id, or 'new' while the sheet is open
 let draft = null;        // the project being added while sheet === 'new'
+let vsheet = null;       // the vendor whose sheet is open (D9b-2b); never at once with `sheet`
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -458,23 +446,17 @@ function renderVendors(){
   if (!ve.length){ vb.className = 'board-empty'; vb.textContent = 'No vendors yet. Add the people who do the work.'; return; }
   vb.className = 'list';
   vb.innerHTML = ve.map(v => `
-    <div class="vrow" data-vendor-row="${v.id}">
-      <div class="main">
-        <div class="title" data-vendor-name="${v.id}">${esc(v.name)}</div>
-        <div class="fields">${VENDOR_FIELDS.filter(f => f !== 'notes').map(f => vendorField(v, f)).join('')}</div>
-        ${v.notes ? `<div class="notes" data-vendor-field="${v.id}" data-field="notes">${esc(v.notes)}</div>` : vendorField(v, 'notes')}
-      </div>
-      <button class="open" data-open="${v.id}" aria-label="Open ${esc(v.name)}">${projectCount(v.id)}</button>
-    </div>`).join('');
+    <button class="item" data-vsheet="${v.id}" type="button">
+      <span class="mark ${tintOf(v.id)}"></span>
+      <span class="body"><span class="title">${esc(v.name)}</span><span class="sub" style="display:block">${esc([v.category, v.phone].filter(Boolean).join(' · ') || 'no details yet')}</span></span>
+      <span class="count">${projectCount(v.id)}</span>
+    </button>`).join('');
 }
 
-// A vendor field: the label is the edit handle, the value is a link where
-// it can be one (tel:, mailto:, the website) and plain text otherwise.
-function vendorField(v, f){
-  const val = v[f] || '';
-  const href = !val ? '' : f === 'phone' ? `tel:${val.replace(/[^+\d]/g, '')}` : f === 'email' ? `mailto:${val}` : f === 'website' ? (/^https?:\/\//i.test(val) ? val : `https://${val}`) : '';
-  const shown = href ? `<a href="${esc(href)}" target="_blank" rel="noopener">${esc(val)}</a>` : esc(val);
-  return `<span class="field ${val ? '' : 'empty'}"><span class="k" data-vendor-field="${v.id}" data-field="${f}">${f}</span><span class="v">${shown}</span></span>`;
+// Where a vendor field can be used: a call, a mail, the website.
+function vendorHref(f, val){
+  if (!val) return '';
+  return f === 'phone' ? `tel:${val.replace(/[^+\d]/g, '')}` : f === 'email' ? `mailto:${val}` : f === 'website' ? (/^https?:\/\//i.test(val) ? val : `https://${val}`) : '';
 }
 
 function render(){
@@ -503,10 +485,39 @@ function monthOptions(current){
   if (current && !months.includes(monthIdx(current))) months.unshift(monthIdx(current));   // a past month stays offered while it is the project's
   return `<option value="">Later (no month)</option>` + months.map(i => `<option value="${ymOf(i)}" ${ymOf(i) === current ? 'selected' : ''}>${monthLong(i)}</option>`).join('');
 }
+// The vendor sheet (D9b-2b): every field edits where it stands and saves on
+// change, like a project's; an empty name keeps the old one. From here the
+// vendor's page opens, and the vendor is deleted (refused while a project
+// names it).
+function renderVendorSheet(v){
+  const field = (f, label, mode) => `<label class="field"><span class="k">${label}</span><input class="wide" id="vs-${f}" data-vfield="${f}" value="${esc(v[f] || '')}" inputmode="${mode}" aria-label="${label}" autocomplete="off" enterkeyhint="done"></label>`;
+  const links = [['phone', 'Call'], ['email', 'Email'], ['website', 'Website']].filter(([f]) => v[f]).map(([f, l]) => `<a class="pill" href="${esc(vendorHref(f, v[f]))}" target="_blank" rel="noopener">${l}</a>`).join('');
+  $('sheet').setAttribute('aria-label', 'Vendor');
+  $('sheet').innerHTML = `<div class="in"><div class="grab"></div><button class="close" type="button" id="s-close">Close</button>
+    <input class="t" id="vs-name" data-vfield="name" value="${esc(v.name)}" aria-label="Vendor name" autocomplete="off" enterkeyhint="done">
+    ${links ? `<div class="links">${links}</div>` : ''}
+    <div class="fields">
+      ${field('category', 'Category', 'text')}${field('phone', 'Phone', 'tel')}${field('email', 'Email', 'email')}${field('website', 'Website', 'url')}
+      <label class="field col"><span class="k">Notes</span><textarea id="vs-notes" data-vfield="notes" rows="3" aria-label="Notes">${esc(v.notes || '')}</textarea></label>
+    </div>
+    <div class="btns"><button class="btn warn" type="button" id="vs-delete">Delete</button><button class="btn pri" type="button" data-open="${v.id}">Page · ${projectCount(v.id)}</button></div>
+  </div>`;
+}
+function setVendorField(f, value){
+  const v = findVendor(vsheet); if (!v) return;
+  const text = value.trim();
+  if (f === 'name' && !text){ render(); return; }   // editing never deletes
+  if (text === (v[f] || '')) return;
+  v[f] = text; v.updated_at = nowIso(); save(); render();
+}
 function renderSheet(){
-  const p = sheet === 'new' ? draft : sheet ? find(sheet) : null;
-  $('sheet').hidden = $('dim').hidden = !p;
+  const v = vsheet ? findVendor(vsheet) : null;
+  if (vsheet && !v) vsheet = null;
+  const p = v ? null : sheet === 'new' ? draft : sheet ? find(sheet) : null;
+  $('sheet').hidden = $('dim').hidden = !p && !v;
+  if (v){ renderVendorSheet(v); return; }
   if (!p) return;
+  $('sheet').setAttribute('aria-label', 'Project');
   const ids = p.vendor_ids || [];
   const free = vendors().filter(v => !ids.includes(v.id));
   const done = !isOpen(p);   // a done project is shown read-only; its one action is Reopen
@@ -534,7 +545,7 @@ function renderSheet(){
 const current = () => sheet === 'new' ? draft : find(sheet);
 function commit(p){ if (sheet !== 'new'){ touch(p); save(); } }
 function openSheet(id){ sheet = id; render(); }
-function closeSheet(){ sheet = null; draft = null; render(); }
+function closeSheet(){ sheet = null; draft = null; vsheet = null; render(); }
 function newProject(){
   const t = nowIso();
   return {
@@ -710,39 +721,8 @@ function createVendor(name){
   return v;
 }
 
-// Tap a vendor's name or a field label to edit it in place. Enter or tapping
-// away saves; Escape leaves it. An empty name keeps the original (editing
-// never deletes); an empty field clears that field.
-function startVendorEdit(el){
-  const v = findVendor(el.dataset.vendorName || el.dataset.vendorField);
-  const f = el.dataset.vendorName ? 'name' : el.dataset.field;
-  const input = document.createElement('input');
-  input.className = f === 'name' ? 'edit' : '';
-  input.value = v[f] || '';
-  input.setAttribute('aria-label', f === 'name' ? 'Edit vendor name' : `Edit ${f}`);
-  if (f === 'phone') input.inputMode = 'tel';
-  if (f === 'email') input.inputMode = 'email';
-  if (f === 'website') input.inputMode = 'url';
-  let finished = false;
-  const finish = commit => {
-    if (finished) return; finished = true;
-    const text = input.value.trim();
-    if (commit && text !== (v[f] || '') && (f !== 'name' || text)){ v[f] = text; v.updated_at = nowIso(); save(); }
-    render();
-  };
-  input.addEventListener('keydown', e => {
-    if (e.key === 'Enter'){ e.preventDefault(); finish(true); }
-    if (e.key === 'Escape'){ e.preventDefault(); finish(false); }
-  });
-  input.addEventListener('blur', () => finish(true));
-  if (f === 'name'){ el.replaceWith(input); }
-  else { const wrap = el.closest('.field') || el; wrap.replaceWith(input); }
-  input.focus();
-  input.setSelectionRange(input.value.length, input.value.length);
-}
-
 // A vendor a project still names cannot be deleted — the link is the
-// project's, not the directory's. Otherwise: hold, then confirm.
+// project's, not the directory's. Otherwise: confirm.
 function askDeleteVendor(id){
   const v = findVendor(id);
   if (!v) return false;
@@ -853,23 +833,8 @@ function startBudget(el){
   el.replaceWith(input); input.focus();
 }
 
-// Hold a vendor row to delete it (projects are deleted from their sheet).
-let holdTimer = null;
-function holdStart(e){
-  const row = e.target.closest('#vendors .vrow');
-  if (!row || e.target.closest('button, input, select, a')) return;
-  clearTimeout(holdTimer);
-  holdTimer = setTimeout(() => { holdTimer = null; askDeleteVendor(row.dataset.vendorRow); }, 600);
-}
-function holdEnd(){ clearTimeout(holdTimer); holdTimer = null; }
-
 $('add').addEventListener('click', startAdd);
 $('dim').addEventListener('click', () => { if (sheet === 'new') setTitle(); closeSheet(); });
-document.addEventListener('pointerdown', holdStart);
-document.addEventListener('pointerup', holdEnd);
-document.addEventListener('pointercancel', holdEnd);
-document.addEventListener('pointermove', holdEnd);
-document.addEventListener('contextmenu', e => { if (e.target.closest('#vendors .vrow')) e.preventDefault(); });
 $('vendor-add').addEventListener('click', addVendor);
 $('vendor-field').addEventListener('keydown', e => { if (e.key === 'Enter'){ e.preventDefault(); addVendor(); } });
 $('vendor-back').addEventListener('click', () => show('vendors'));
@@ -880,6 +845,7 @@ document.addEventListener('toggle', e => { if (e.target.id === 'vendor-completed
 // The sheet's controls: text commits on change (Enter or leaving the field),
 // choices at once.
 $('sheet').addEventListener('change', e => {
+  if (vsheet){ if (e.target.dataset.vfield) setVendorField(e.target.dataset.vfield, e.target.value); return; }
   if (sheet !== 'new' && !isOpen(current() || {})) return;   // a done project is read-only
   if (e.target.id === 's-title') setTitle();
   if (e.target.id === 's-cost') setCost();
@@ -894,14 +860,16 @@ $('sheet').addEventListener('keydown', e => {
   if (e.key === 'Enter' && e.target.tagName === 'INPUT'){ e.preventDefault(); e.target.blur(); e.target.dispatchEvent(new Event('change', { bubbles: true })); if (sheet === 'new' && e.target.id === 's-title') addDraft(); }
 });
 document.addEventListener('keydown', e => {
-  if (e.key === 'Escape' && sheet){ e.preventDefault(); closeSheet(); return; }
+  if (e.key === 'Escape' && (sheet || vsheet)){ e.preventDefault(); closeSheet(); return; }
   if (e.key !== 'Enter' && e.key !== ' ') return;
   const t = e.target.closest && e.target.closest('[data-budget]');
   if (t && !t.querySelector('input')){ e.preventDefault(); t.click(); }
 });
 
 document.addEventListener('click', e => {
-  const tab = e.target.closest('[role="tab"]');    if (tab){ sheet = null; draft = null; show(tab.id.replace('tab-', '')); return; }
+  const tab = e.target.closest('[role="tab"]');    if (tab){ sheet = null; draft = null; vsheet = null; show(tab.id.replace('tab-', '')); return; }
+  const vs = e.target.closest('[data-vsheet]');    if (vs){ vsheet = vs.dataset.vsheet; render(); return; }
+  if (e.target.id === 'vs-delete'){ if (askDeleteVendor(vsheet)) closeSheet(); return; }
   const proj = e.target.closest('[data-project]'); if (proj){ openSheet(proj.dataset.project); return; }
   const eff = e.target.closest('[data-eff]');      if (eff){ const p = current(); if (!isOpen(p)) return; p.effort = eff.dataset.eff || null; commit(p); render(); return; }
   const un = e.target.closest('[data-unlink]');    if (un){ unlinkVendor(un.dataset.unlink); return; }
@@ -914,8 +882,7 @@ document.addEventListener('click', e => {
   if (e.target.id === 'vendor-copy'){ copyVendor(); return; }
   if (e.target.id === 'vendor-costs'){ showCosts = !showCosts; render(); return; }
   const bud = e.target.closest('[data-budget]');   if (bud){ startBudget(bud); return; }
-  const open = e.target.closest('[data-open]');    if (open){ openVendor = open.dataset.open; view = 'vendor'; render(); return; }
-  const ven = e.target.closest('[data-vendor-name], [data-vendor-field]'); if (ven) startVendorEdit(ven);
+  const open = e.target.closest('[data-open]');    if (open){ openVendor = open.dataset.open; vsheet = null; view = 'vendor'; render(); return; }
 });
 
 load();
