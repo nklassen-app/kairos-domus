@@ -1,6 +1,6 @@
 # CLAUDE.md — Kairos OS build sessions
 
-This project is governed by the **Foundation Charter v1.2** (`kairos-foundation/FOUNDATION_CHARTER.md`, at the root of the `kairos_v3` checkout — read it if a judgment call isn't covered here). This file is a **verbatim copy of the master** in `kairos-foundation/`; edit the master, then run `kairos-foundation/scripts/sync_claude_md.sh` — never edit a copy. This file is the operative subset: the rules that should shape every session. It is *context, not enforcement* — the non-negotiable boundary is enforced by mechanisms (`.gitignore`, out-of-tree data, the pre-push audit), not by trusting these words. Where a rule here and a prompt conflict, this file wins, or the Charter is amended deliberately — never overridden silently.
+This project is governed by the **Foundation Charter v1.4** (`kairos-foundation/FOUNDATION_CHARTER.md`, at the root of the `kairos_v3` checkout — read it if a judgment call isn't covered here). This file is a **verbatim copy of the master** in `kairos-foundation/`; edit the master, then run `kairos-foundation/scripts/sync_claude_md.sh` — never edit a copy. This file is the operative subset: the rules that should shape every session. It is *context, not enforcement* — the non-negotiable boundary is enforced by mechanisms (`.gitignore`, out-of-tree data, the pre-push audit), not by trusting these words. Where a rule here and a prompt conflict, this file wins, or the Charter is amended deliberately — never overridden silently.
 
 ## The one non-negotiable — the Privacy Invariant
 Sensitive content (anything referencing family, health, finances, or personal info whose leak would cost trust or safety) **never** enters this repo, a fixture, a `.db`, a debug dump, or a pasted session. Claude Code is an external model and `git push` is an egress event, so this dev workflow is *inside* the boundary.
@@ -34,8 +34,9 @@ This system is deliberately biased toward creative velocity and tolerates mess. 
 - **Never** commit: `*.db`/`*.sqlite` and sidecars, `*.key`/`*.fernet`, `.env`, `config/llm.json`, anything matching `*secret*`/`*credentials*`, real-data fixtures, debug dumps. (Canonical block in `.gitignore` — keep it intact; never relax it.)
 - Commit **code, schema, and migrations** — not runtime state (DBs, caches, generated files).
 - **Audit before the first push** of any repo: run `git ls-files` and confirm nothing sensitive is tracked. Ignore before push, never after.
+- **Audit before every push:** `kairos-foundation/scripts/audit_push.sh` (installed as the repo's `pre-push` hook) checks the canonical block, refuses the hard net, and lists every file the push sends — N. content-reads that list by hand. A push to a public repo is never sent unread.
 - A pushed secret is a **burned secret** — rotate it, don't just delete the file.
-- All repos **private** by default.
+- All repos **private** by default. **Public only by the Charter Part 7 exception**, and only where the Registry's Repo column says so: Tier ≤ 1, data only in the viewer's own browser, no secret, no outbound call beyond loading its own page. Sensitive or personal-strategy content is never public. Making a repo public is N.'s decision, never Claude's.
 
 ## Session start — the glance
 - **Before touching any file, run `kairos-foundation/scripts/kairos_status.sh`.** It fetches first (P12), so on a device with a live `ssh-agent` this is how another device's push — the phone and the Chromebook working in parallel — shows up as "behind" before you commit on top of it, not after a rejected push. If it shows "behind" on a repo you're about to touch, pull/merge first.
