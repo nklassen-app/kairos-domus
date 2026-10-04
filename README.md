@@ -7,7 +7,9 @@ what is planned, what is spent, what is left. Work is completed with a date
 and kept; the vendors who do it have a directory. **The line with the
 Whiteboard is who does the work** (2026-10-03): work the support team does
 belongs here, however small; what N. does alone belongs on the Whiteboard.
-A DIY project stays here.
+The line guides where work is logged; nothing enforces it and nothing
+connects the two apps — work stays where it is logged. Work with no vendor
+(DIY — often "not known yet who") stays here, task or project.
 
 Local-first single page, no build step, no dependencies, no account. Hosted on
 GitHub Pages and wrapped in a Capacitor shell for the phone, the same way as
