@@ -9,7 +9,8 @@ Whiteboard is who does the work** (2026-10-03): work the support team does
 belongs here, however small; what N. does alone belongs on the Whiteboard.
 The line guides where work is logged; nothing enforces it and nothing
 connects the two apps — work stays where it is logged. Work with no vendor
-(DIY — often "not known yet who") stays here, task or project.
+is **Unassigned** (often "not known yet who", sometimes N. alone) and stays
+here, task or project.
 
 Local-first single page, no build step, no dependencies, no account. Hosted on
 GitHub Pages and wrapped in a Capacitor shell for the phone, the same way as
@@ -49,7 +50,7 @@ Four places at the bottom: **Plan · Vendors · Budget · Done** (D9b-1).
    time back and returns the job to its month — only for the latest time,
    and only while the job is where that time put it; older times stay.
    **Steps** (D12): a project's sheet has a Steps list — an ordered
-   checklist, each step a title, who does it (a vendor or DIY) and a tick;
+   checklist, each step a title, who does it (a vendor, or Unassigned) and a tick;
    steps are added in the field at its end, retitled in place (empty keeps
    the old title), moved up with ↑ and removed with ×. Cost, size and month
    stay on the project: one too big for that is several projects. Who
@@ -70,7 +71,7 @@ Four places at the bottom: **Plan · Vendors · Budget · Done** (D9b-1).
    every status but `completed` is open. `priority_order` stays in old
    records; nothing reads it.
 3. A row is the title, one quiet line (the month where the group does not
-   say it · the vendors, or DIY · the effort) and the cost. **Tapping a row
+   say it · the vendors, or Unassigned · the effort) and the cost. **Tapping a row
    opens its sheet**, where everything is edited: the title (saving empty
    keeps the original), the month (this month and the eleven after it, or
    later; a past month stays offered while it is the project's), vendors,
@@ -100,7 +101,7 @@ Four places at the bottom: **Plan · Vendors · Budget · Done** (D9b-1).
    removes it — a vendor a project, task or step still names cannot be
    deleted.
    **Projects name vendors** by id — zero, one or several; none
-   means DIY. In a project's sheet, the vendor list adds one (or "+ New
+   means Unassigned (the label was DIY until D13). In a project's sheet, the vendor list adds one (or "+ New
    vendor…", which asks for a name and creates it) and tapping a vendor's
    chip removes it. The "Page · N projects" button in a vendor's sheet opens
    the **vendor page**: open work grouped by month, Done collapsed by year —

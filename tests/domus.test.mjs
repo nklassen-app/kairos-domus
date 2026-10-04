@@ -212,17 +212,17 @@ test('a row is the title, one quiet line and the cost — no chips or buttons on
      project({ id: 'c', title: 'Attic', effort: 'S', target_month: '2027-06' })]) } });
   const sub = id => h.$(`[data-project="${id}"] .sub`).textContent;
   assert.equal(sub('a'), 'Ace Electric, Bob Builds · L');
-  assert.equal(sub('b'), 'Nov · DIY', 'the quarter group shows which month');
-  assert.equal(sub('c'), "Jun '27 · DIY · S");
+  assert.equal(sub('b'), 'Nov · Unassigned', 'the quarter group shows which month');
+  assert.equal(sub('c'), "Jun '27 · Unassigned · S");
   assert.equal(h.$('#plan .chip, #plan select, #plan [data-activate], #plan [data-up]'), null);
 });
 
 /* ---- vendors on a project (D2b, now in the sheet) ---- */
 
-test('the sheet links, adds a second, and unlinks vendors; none is DIY', () => {
+test('the sheet links, adds a second, and unlinks vendors; none is Unassigned', () => {
   const h = boot({ seed: { [KEY]: docV([vendor({ id: 'ace', name: 'Ace' }), vendor({ id: 'bob', name: 'Bob' })], [project({ id: 'a', title: 'A' })]) } });
   h.open('a');
-  assert.equal(h.$('#s-vendor option').textContent, 'DIY — add a vendor');
+  assert.equal(h.$('#s-vendor option').textContent, 'Unassigned — add a vendor');
   h.set('s-vendor', 'ace');
   h.set('s-vendor', 'bob');
   assert.deepEqual(h.stored().projects[0].vendor_ids, ['ace', 'bob']);
@@ -232,7 +232,7 @@ test('the sheet links, adds a second, and unlinks vendors; none is DIY', () => {
   assert.deepEqual(h.stored().projects[0].vendor_ids, ['bob']);
   assert.equal(h.$('[data-project="a"] .sub').textContent, 'Bob');
   h.click('[data-unlink="bob"]');
-  assert.equal(h.$('[data-project="a"] .sub').textContent, 'DIY');
+  assert.equal(h.$('[data-project="a"] .sub').textContent, 'Unassigned');
 });
 
 test('"+ New vendor…" asks for a name and links the new vendor; a cancelled prompt changes nothing', () => {
@@ -799,7 +799,7 @@ test('a page whose vendor is deleted falls back to the Vendors list', () => {
 
 /* ---- D10: the kind, and tasks ---- */
 
-// A vendor with a task and a project, a DIY task, and one done task; made-up names.
+// A vendor with a task and a project, an unassigned task, and one done task; made-up names.
 const KIND_DOC = () => docV(
   [vendor({ id: 'ace', name: 'Ace Handyman' })],
   [
@@ -1108,7 +1108,7 @@ test('a project shows whole on each step vendor\'s page, theirs marked; the copi
   Object.defineProperty(h.w.navigator, 'clipboard', { value: { writeText: x => { copied = x; return Promise.resolve(); } }, configurable: true });
   h.click('#tab-vendors'); openPage(h, 'paint');
   assert.deepEqual(pageText(h, '#vendor-page .title'), ['Redo the stairs']);
-  assert.deepEqual(pageText(h, '#vendor-page .steps .st'), ['○ Sand the treads · Sanders Co', '○ Paint the risers', '✓ Pick the colour · DIY']);
+  assert.deepEqual(pageText(h, '#vendor-page .steps .st'), ['○ Sand the treads · Sanders Co', '○ Paint the risers', '✓ Pick the colour · Unassigned']);
   assert.deepEqual(pageText(h, '#vendor-page .steps .st.mine'), ['○ Paint the risers']);
   h.click('#vendor-copy');
   await new Promise(r => setTimeout(r, 0));

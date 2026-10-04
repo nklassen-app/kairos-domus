@@ -47,7 +47,7 @@
   .note{font-size:13px;color:var(--muted);margin:10px 4px 0;}
 
   /* cards (D9b-2a): projects two to a row, tinted by their first vendor with
-     C's marks — gold, blue, sage, stone; no vendor (DIY) stays white */
+     C's marks — gold, blue, sage, stone; no vendor (Unassigned) stays white */
   .list.cards{display:grid;grid-template-columns:1fr 1fr;gap:10px;background:none;padding:0;border-radius:0;}
   .cards .item{flex-direction:column;align-items:stretch;justify-content:space-between;gap:10px;min-height:96px;padding:12px 13px;border-radius:12px;background:var(--panel);}
   .cards .item + .item{border-top:none;}
@@ -237,7 +237,7 @@
 <div class="sheet" id="sheet" role="dialog" aria-modal="true" aria-label="Project" hidden></div>
 
 <!-- Keep in step with CACHE in sw.js — the visible proof of which build is running. -->
-<span class="ver">domus-v15</span>
+<span class="ver">domus-v16</span>
 
 <script>
 // State: one JSON document in localStorage, on one device. No backup, no sync.
@@ -267,7 +267,7 @@
 // still to come in the budget year as planned, each done time as spent.
 //
 // D12: a project can carry `steps` — an ordered list of { id, title,
-// vendor_id (null = DIY), done }. Cost, size and month stay on the project.
+// vendor_id (null = Unassigned), done }. Cost, size and month stay on the project.
 // Who works on a project is its own vendors and every step's vendor, so it
 // shows whole on each of their pages. Ticking the last step offers Mark
 // done; a project is never done by itself. Tasks and recurring jobs carry
@@ -435,7 +435,7 @@ function tintOf(vendorId){
 function row(p, { month = false, date = false } = {}){
   if (isTask(p)) return taskRow(p, { date });
   const ids = whoIds(p), steps = stepsOf(p);
-  const who = ids.length ? ids.map(vendorName).join(', ') : 'DIY';
+  const who = ids.length ? ids.map(vendorName).join(', ') : 'Unassigned';
   const bits = [];
   if (month && p.target_month) bits.push(monthShort(monthIdx(p.target_month)));
   if (isRecurring(p)) bits.push('↻ ' + rhythm(p).map(m => MONTHS[m - 1]).join(', '));
@@ -454,7 +454,7 @@ function row(p, { month = false, date = false } = {}){
 // who line (the vendor page, where it would only repeat the vendor).
 function taskRow(p, { date = false, tag = 'button' } = {}){
   const ids = p.vendor_ids || [];
-  const bits = [ids.length ? ids.map(vendorName).join(', ') : 'DIY'];
+  const bits = [ids.length ? ids.map(vendorName).join(', ') : 'Unassigned'];
   if (date && p.completed_at) bits.push(dateOf(p.completed_at));
   const attrs = tag === 'button' ? ` data-project="${p.id}" type="button"` : '';
   return `<${tag} class="item task"${attrs}>
@@ -631,7 +631,7 @@ function renderSheet(){
       ${task || rec ? '' : `<label class="field"><span class="k">Month</span><select id="s-month" aria-label="Month" ${off}>${monthOptions(p.target_month)}</select></label>`}
       <div class="field"><span class="k">Vendor</span><span class="vendors">
         ${ids.map(id => `<button class="vchip" type="button" data-unlink="${id}" aria-label="Remove ${esc(vendorName(id))}" ${off}>${esc(vendorName(id))}</button>`).join('')}
-        ${done ? (ids.length ? '' : '<span>DIY</span>') : ''}<select id="s-vendor" aria-label="Add a vendor" ${done ? 'hidden' : ''}><option value="">${ids.length ? '+ Add' : 'DIY — add a vendor'}</option>${free.map(v => `<option value="${v.id}">${esc(v.name)}</option>`).join('')}<option value="__new">+ New vendor…</option></select>
+        ${done ? (ids.length ? '' : '<span>Unassigned</span>') : ''}<select id="s-vendor" aria-label="Add a vendor" ${done ? 'hidden' : ''}><option value="">${ids.length ? '+ Add' : 'Unassigned — add a vendor'}</option>${free.map(v => `<option value="${v.id}">${esc(v.name)}</option>`).join('')}<option value="__new">+ New vendor…</option></select>
       </span></div>
       ${task ? '' : `<div class="field"><span class="k">Effort</span><span class="seg">${EFFORTS.map(e => `<button type="button" data-eff="${e || ''}" aria-pressed="${p.effort === e}" ${off}>${e || '—'}</button>`).join('')}</span></div>
       <label class="field"><span class="k">${rec ? 'Cost each time' : 'Estimated cost'}</span><input id="s-cost" inputmode="decimal" placeholder="$" value="${p.estimated_cost == null ? '' : p.estimated_cost}" aria-label="Estimated cost" autocomplete="off" ${off}></label>`}
@@ -649,7 +649,7 @@ function renderSheet(){
 function stepsSection(p, done, off){
   const steps = p.steps || [];
   const n = steps.filter(st => st.done).length;
-  const who = st => `<select data-stepvendor="${st.id}" aria-label="Who does ${esc(st.title)}" ${off}><option value="">DIY</option>${vendors().map(v => `<option value="${v.id}" ${st.vendor_id === v.id ? 'selected' : ''}>${esc(v.name)}</option>`).join('')}</select>`;
+  const who = st => `<select data-stepvendor="${st.id}" aria-label="Who does ${esc(st.title)}" ${off}><option value="">Unassigned</option>${vendors().map(v => `<option value="${v.id}" ${st.vendor_id === v.id ? 'selected' : ''}>${esc(v.name)}</option>`).join('')}</select>`;
   return `<div class="sechead stepshead"><h2>Steps</h2><span class="sum">${steps.length ? `${n} of ${steps.length} done` : ''}</span></div>
     <div class="fields" id="s-steps">
       ${steps.map((st, k) => `<div class="step" data-step="${st.id}">
@@ -862,7 +862,7 @@ function vendorGroups(id){
 function stepLines(p, vid){
   const steps = stepsOf(p);
   if (!steps.length) return '';
-  return `<span class="steps">${steps.map(st => `<span class="st ${st.vendor_id === vid ? 'mine' : ''} ${st.done ? 'done' : ''}">${st.done ? '✓' : '○'} ${esc(st.title)}${st.vendor_id === vid ? '' : ` · ${esc(st.vendor_id ? vendorName(st.vendor_id) : 'DIY')}`}</span>`).join('')}</span>`;
+  return `<span class="steps">${steps.map(st => `<span class="st ${st.vendor_id === vid ? 'mine' : ''} ${st.done ? 'done' : ''}">${st.done ? '✓' : '○'} ${esc(st.title)}${st.vendor_id === vid ? '' : ` · ${esc(st.vendor_id ? vendorName(st.vendor_id) : 'Unassigned')}`}</span>`).join('')}</span>`;
 }
 function renderVendorPage(v){
   const g = vendorGroups(v.id);
