@@ -809,11 +809,11 @@ const KIND_DOC = () => docV(
     project({ id: 'gate', kind: 'task', title: 'Oil the gate', vendor_ids: ['ace'], status: 'completed', completed_at: '2026-09-01T10:00:00.000Z' }),
   ]);
 
-test('records from before D10 load as projects; the sheet offers Task or Project, Project picked for a new one', () => {
+test('records from before D10 load as projects; the sheet offers Task, Project or Recurring, Project picked for a new one', () => {
   const h = boot({ seed: { [KEY]: doc([project({ id: 'a', title: 'A' })]) } });
   assert.equal('kind' in h.stored().projects[0], false, 'loading does not rewrite the stored record');
   h.open('a');
-  assert.deepEqual(h.$$('#s-kind [data-kind]').map(b => [b.textContent, b.getAttribute('aria-pressed')]), [['Task', 'false'], ['Project', 'true']]);
+  assert.deepEqual(h.$$('#s-kind [data-kind]').map(b => [b.textContent, b.getAttribute('aria-pressed')]), [['Task', 'false'], ['Project', 'true'], ['Recurring', 'false']]);
   h.click('#s-close');
   h.click('#add');
   assert.equal(h.$('#s-kind [data-kind="project"]').getAttribute('aria-pressed'), 'true');
@@ -930,4 +930,119 @@ test('a vendor a task names cannot be deleted', () => {
   const h = boot({ seed: { [KEY]: docV([vendor({ id: 'ace', name: 'Ace Handyman' })], [project({ id: 't', kind: 'task', title: 'T', vendor_ids: ['ace'] })]) } });
   assert.equal(h.w.askDeleteVendor('ace'), false);
   assert.equal(h.$('#status').textContent, 'Ace Handyman is named by a project or task and stays.');
+});
+
+/* ---- D11: recurring ---- */
+
+// The clock stands at 2026-09-19 unless a test moves it.
+const job = (over = {}) => project({ kind: 'recurring', title: 'Winterize sprinklers', recur_months: [10], target_month: '2026-10', estimated_cost: 120, vendor_ids: ['ace'], ...over });
+const REC_DOC = (...projects) => { const d = docV([vendor({ id: 'ace', name: 'Ace Yard' })], projects); d.budget.amount = 2000; return d; };
+
+test('turning work recurring asks for months of the year, starts with its month, and sits on Plan in its next month', () => {
+  const h = boot({ seed: { [KEY]: REC_DOC(project({ id: 'a', title: 'Fall cleanup', target_month: '2026-11', vendor_ids: ['ace'] })) } });
+  h.open('a'); h.click('#s-kind [data-kind="recurring"]');
+  let a = h.stored().projects[0];
+  assert.equal(a.kind, 'recurring');
+  assert.deepEqual(a.recur_months, [11], 'its month becomes its rhythm');
+  assert.equal(a.target_month, '2026-11');
+  assert.equal(h.$('#s-month'), null, 'no month picker — the months of the year replace it');
+  assert.equal(h.$$('#s-months [data-rmonth]').length, 12);
+  assert.equal(h.$('#s-when').textContent, 'Next: November 2026 · not done yet');
+  h.click('#s-months [data-rmonth="4"]');
+  a = h.stored().projects[0];
+  assert.deepEqual(a.recur_months, [4, 11]);
+  assert.equal(a.target_month, '2026-11', 'still the next one');
+  h.click('#s-months [data-rmonth="11"]');
+  assert.equal(h.stored().projects[0].target_month, '2027-04', 'November gone: next April');
+  h.click('#s-months [data-rmonth="4"]');
+  assert.deepEqual(h.stored().projects[0].recur_months, [4], 'the last month cannot go');
+  assert.equal(h.$('#status').textContent, 'A recurring job needs at least one month.');
+  h.click('#s-months [data-rmonth="10"]'); h.click('#s-close');
+  assert.deepEqual(groupsOf(h).next.titles, ['Fall cleanup'], 'October is next month');
+  assert.match(h.$('#plan [data-project="a"] .sub').textContent, /↻ Apr, Oct/);
+});
+
+test('a new recurring job is added from + with this month as its first', () => {
+  const h = boot({ seed: { [KEY]: REC_DOC() } });
+  h.click('#add');
+  h.$('#s-title').value = 'Gutter clean'; h.$('#s-title').dispatchEvent(new h.w.Event('input', { bubbles: true }));
+  h.click('#s-kind [data-kind="recurring"]');
+  h.click('#s-add');
+  const j = h.stored().projects[0];
+  assert.deepEqual([j.kind, j.recur_months, j.target_month], ['recurring', [9], '2026-09']);
+  assert.deepEqual(groupsOf(h).this.titles, ['Gutter clean']);
+});
+
+test('Mark done on a recurring job dates that time in Done and moves the job to its next month; Undo takes it back', () => {
+  const h = boot({ seed: { [KEY]: REC_DOC(job({ id: 'j', recur_months: [4, 10], target_month: '2026-09' })) } });
+  h.open('j'); h.click('#s-done');
+  assert.equal(h.$('#toast-text').textContent, 'Done: Winterize sprinklers · next October 2026');
+  let docNow = h.stored();
+  assert.equal(docNow.projects.length, 2);
+  const j = docNow.projects.find(p => p.id === 'j'), t = docNow.projects.find(p => p.recurring_id === 'j');
+  assert.equal(j.status, 'backlog', 'the job stays open');
+  assert.equal(j.target_month, '2026-10');
+  assert.deepEqual([t.status, t.completed_at, t.target_month, t.next_month, t.estimated_cost], ['completed', '2026-09-19T10:00:00.000Z', '2026-09', '2026-10', 120]);
+  assert.deepEqual(groupsOf(h).next.titles, ['Winterize sprinklers']);
+  h.click('#tab-done');
+  assert.deepEqual(h.titles('done'), ['Winterize sprinklers']);
+  h.click('#toast-undo');
+  docNow = h.stored();
+  assert.equal(docNow.projects.length, 1, 'the time is taken back');
+  assert.equal(docNow.projects[0].target_month, '2026-09');
+});
+
+test('done early, the job skips to the time after; its sheet shows when it was last done', () => {
+  const h = boot({ seed: { [KEY]: REC_DOC(job({ id: 'j', recur_months: [10], target_month: '2026-10' })) } });
+  h.open('j'); h.click('#s-done');
+  assert.equal(h.stored().projects.find(p => p.id === 'j').target_month, '2027-10');
+  h.open('j');
+  assert.equal(h.$('#s-when').textContent, "Next: October 2027 · last done Sep 19, 2026");
+});
+
+test('a done time reopens only while it is the latest and the job has not moved; Reopen returns the job to its month', () => {
+  const t1 = project({ id: 't1', kind: 'recurring', recurring_id: 'j', title: 'Winterize sprinklers', status: 'completed', completed_at: '2025-10-05T10:00:00.000Z', target_month: '2025-10', next_month: '2026-10', estimated_cost: 110 });
+  const t2 = project({ id: 't2', kind: 'recurring', recurring_id: 'j', title: 'Winterize sprinklers', status: 'completed', completed_at: '2026-04-05T10:00:00.000Z', target_month: '2026-04', next_month: '2026-10', estimated_cost: 120 });
+  const h = boot({ seed: { [KEY]: REC_DOC(job({ id: 'j', recur_months: [4, 10] }), t1, t2) } });
+  h.click('#tab-done'); h.open('t1');
+  assert.equal(h.$('#s-reopen'), null, 'an older time stays');
+  assert.match(h.$('#s-when').textContent, /the October 2025 time/);
+  h.click('#s-close'); h.open('t2');
+  h.click('#s-reopen');
+  const d = h.stored();
+  assert.equal(d.projects.some(p => p.id === 't2'), false);
+  assert.equal(d.projects.find(p => p.id === 'j').target_month, '2026-04');
+  assert.deepEqual(groupsOf(h).this.titles, ['Winterize sprinklers'], 'April is overdue: this month');
+});
+
+test('the budget plans every time still to come this year and spends each done time', () => {
+  const t = project({ id: 't', kind: 'recurring', recurring_id: 'j', title: 'Yard', status: 'completed', completed_at: '2026-04-10T10:00:00.000Z', target_month: '2026-04', next_month: '2026-10', estimated_cost: 200 });
+  const h = boot({ seed: { [KEY]: REC_DOC(
+    job({ id: 'j', title: 'Yard', recur_months: [4, 10, 11], target_month: '2026-10', estimated_cost: 200 }),
+    job({ id: 'n', title: 'Next year only', recur_months: [3], target_month: '2027-03', estimated_cost: 999 }),
+    t) } });
+  h.click('#tab-budget');
+  assert.deepEqual(h.figures(), { spent: '$200', planned: '$400', remaining: '$1,400', uncosted: null });
+  assert.deepEqual(pageText(h, '#by-month .mrow:not(.muted) .k'), ['October 2026 · 1', 'November 2026 · 1']);
+  assert.match(h.$('#other-year').textContent, /Planned for another year · 1/);
+});
+
+test('the vendor page and the copied text carry recurring jobs with their rhythm; the job counts once', async () => {
+  const t = project({ id: 't', kind: 'recurring', recurring_id: 'j', title: 'Yard', vendor_ids: ['ace'], status: 'completed', completed_at: '2026-04-10T10:00:00.000Z', target_month: '2026-04', next_month: '2026-10' });
+  const h = boot({ seed: { [KEY]: REC_DOC(job({ id: 'j', title: 'Yard', recur_months: [4, 10] }), job({ id: 's' }), t) } });
+  let copied = null;
+  Object.defineProperty(h.w.navigator, 'clipboard', { value: { writeText: x => { copied = x; return Promise.resolve(); } }, configurable: true });
+  h.click('#tab-vendors');
+  assert.deepEqual(pageText(h, '#vendors .count'), ['2 recurring']);
+  openPage(h, 'ace');
+  assert.deepEqual(pageText(h, '#vendor-page .sechead h2'), ['October 2026', 'Done · 1']);
+  h.click('#vendor-costs');
+  h.click('#vendor-copy');
+  await new Promise(r => setTimeout(r, 0));
+  assert.equal(copied, [
+    'Hi, here are the jobs I have for you:', '',
+    '1. Yard (October; every April and October)',
+    '2. Winterize sprinklers (October, every year)', '',
+    'Thanks!', '',
+  ].join('\n'));
 });

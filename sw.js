@@ -1,4 +1,4 @@
-const CACHE = 'domus-v13';   // D10: tasks   // bump on EVERY content change, and the .ver marker in index.html with it
+const CACHE = 'domus-v14';   // D11: recurring   // bump on EVERY content change, and the .ver marker in index.html with it
 const ASSETS = ['.', 'index.html', 'manifest.webmanifest', 'icon.svg'];
 
 self.addEventListener('install', e => {

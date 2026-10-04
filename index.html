@@ -86,6 +86,8 @@
   .seg{display:flex;gap:4px;}
   .seg button{border:none;background:var(--hair);border-radius:999px;padding:6px 12px;font-size:13px;font-weight:650;cursor:pointer;}
   .seg button[aria-pressed="true"]{background:var(--accent);color:#fff;}
+  .seg.months{display:grid;grid-template-columns:repeat(6,1fr);gap:6px;margin-top:8px;}
+  .seg.months button{padding:7px 0;}
   .vendors{display:flex;flex-wrap:wrap;gap:6px;justify-content:flex-end;align-items:center;}
   .vchip{border:1px solid var(--edge);background:var(--paper);border-radius:999px;padding:5px 10px;font-size:13px;font-weight:600;cursor:pointer;}
   .vchip::after{content:'  ×';color:var(--muted);}
@@ -223,7 +225,7 @@
 <div class="sheet" id="sheet" role="dialog" aria-modal="true" aria-label="Project" hidden></div>
 
 <!-- Keep in step with CACHE in sw.js — the visible proof of which build is running. -->
-<span class="ver">domus-v13</span>
+<span class="ver">domus-v14</span>
 
 <script>
 // State: one JSON document in localStorage, on one device. No backup, no sync.
@@ -242,6 +244,15 @@
 // into a task keeps its month, effort and cost in the record, hidden and
 // out of every sum, so turning it back loses nothing. Records written
 // before D10 are projects.
+//
+// D11: a third kind, recurring — vendor work that comes back in fixed months
+// of the year (`recur_months`, 1–12, at least one). The job is one open
+// record whose `target_month` is always its next time, so Plan, the vendor
+// page and the copied text treat it like a project. Mark done leaves it
+// open: a dated record of that time (`recurring_id` → the job, its month in
+// `target_month`, the month it moved the job to in `next_month`) goes to
+// Done, and the job moves to its next month. The budget counts every time
+// still to come in the budget year as planned, each done time as spent.
 const KEY = 'domus:v1';
 const EFFORTS = [null, 'S', 'M', 'L'];
 const VENDOR_FIELDS = ['category', 'phone', 'email', 'website', 'notes'];
@@ -263,6 +274,15 @@ const cmp = (x, y) => x < y ? -1 : x > y ? 1 : 0;
 const byMonth = (a, b) => cmp(a.target_month || '~', b.target_month || '~') || cmp(a.created_at || '', b.created_at || '');
 const isOpen = p => p.status !== 'completed';
 const isTask = p => p.kind === 'task';
+const isRecurring = p => p.kind === 'recurring';
+const KINDS = [['task', 'Task'], ['project', 'Project'], ['recurring', 'Recurring']];
+const kindOf = p => isTask(p) ? 'task' : isRecurring(p) ? 'recurring' : 'project';
+const rhythm = p => (p.recur_months || []).slice().sort((a, b) => a - b);
+// The first month of a rhythm at or after month index `from`.
+function nextOccurrence(months, from){
+  for (let i = from; i < from + 12; i++) if (months.includes(i % 12 + 1)) return ymOf(i);
+  return null;
+}
 const openList = () => state.projects.filter(isOpen).sort(byMonth);
 const doneList = () => state.projects.filter(p => !isOpen(p)).sort((a, b) => cmp(b.completed_at || '', a.completed_at || ''));
 const find = id => state.projects.find(p => p.id === id);
@@ -273,10 +293,10 @@ const vendorName = id => (findVendor(id) || {}).name || '?';
 const yearOf = iso => Number((iso || '').slice(0, 4));
 const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
 const sumCost = list => list.reduce((s, p) => s + (isTask(p) ? 0 : p.estimated_cost || 0), 0);   // a task never costs
-// "2 projects, 1 task" — what a list holds, the empty kind left out.
+// "2 projects, 1 task, 1 recurring" — what a list holds, the empty kinds left out.
 function countWork(list, none = ''){
-  const t = list.filter(isTask).length, pr = list.length - t;
-  return [pr ? plural(pr, 'project') : '', t ? plural(t, 'task') : ''].filter(Boolean).join(', ') || none;
+  const t = list.filter(isTask).length, r = list.filter(isRecurring).length, pr = list.length - t - r;
+  return [pr ? plural(pr, 'project') : '', t ? plural(t, 'task') : '', r ? `${r} recurring` : ''].filter(Boolean).join(', ') || none;
 }
 
 function money(n){
@@ -333,8 +353,9 @@ function groupHead(g){
 function budgetFigures(){
   const year = state.budget.year;
   const open = openList().filter(p => !isTask(p));
-  const planned = open.filter(p => p.target_month && Number(p.target_month.slice(0, 4)) === year);
-  const unplanned = open.filter(p => !planned.includes(p));
+  const inYear = open.filter(p => p.target_month && Number(p.target_month.slice(0, 4)) === year);
+  const unplanned = open.filter(p => !inYear.includes(p));
+  const planned = inYear.flatMap(p => isRecurring(p) ? timesIn(p, year) : [p]);
   const spent = doneList().filter(p => !isTask(p) && yearOf(p.completed_at) === year);
   const amount = state.budget.amount;
   return {
@@ -343,6 +364,14 @@ function budgetFigures(){
     remaining: amount == null ? null : amount - sumCost(planned) - sumCost(spent),
     uncosted: planned.concat(spent).filter(p => p.estimated_cost == null).length,
   };
+}
+
+// A recurring job's times from its next month through December of `year`,
+// each a copy carrying its own month — what the budget plans for.
+function timesIn(p, year){
+  const start = monthIdx(p.target_month), out = [{ ...p }];
+  for (let i = start + 1; i <= year * 12 + 11; i++) if (rhythm(p).includes(i % 12 + 1)) out.push({ ...p, target_month: ymOf(i) });
+  return out;
 }
 
 function load(){
@@ -358,7 +387,7 @@ function load(){
   if (!Array.isArray(state.projects)) state.projects = [];
   if (!Array.isArray(state.vendors)) state.vendors = [];   // documents written before D2a have none
   for (const p of state.projects) if (!('target_month' in p)) p.target_month = null;   // records written before D7
-  for (const p of state.projects) if (p.kind !== 'task') p.kind = 'project';           // records written before D10
+  for (const p of state.projects) if (!KINDS.some(([k]) => k === p.kind)) p.kind = 'project';   // records written before D10
   view = 'plan'; sheet = null;
   render();
 }
@@ -387,6 +416,7 @@ function row(p, { month = false, date = false } = {}){
   const who = ids.length ? ids.map(vendorName).join(', ') : 'DIY';
   const bits = [];
   if (month && p.target_month) bits.push(monthShort(monthIdx(p.target_month)));
+  if (isRecurring(p)) bits.push('↻ ' + rhythm(p).map(m => MONTHS[m - 1]).join(', '));
   bits.push(who);
   if (p.effort) bits.push(p.effort);
   if (date && p.completed_at) bits.push(dateOf(p.completed_at));
@@ -560,28 +590,32 @@ function renderSheet(){
   $('sheet').hidden = $('dim').hidden = !p && !v;
   if (v){ renderVendorSheet(v); return; }
   if (!p) return;
-  const task = isTask(p);
-  $('sheet').setAttribute('aria-label', task ? 'Task' : 'Project');
+  const task = isTask(p), rec = isRecurring(p);
+  $('sheet').setAttribute('aria-label', KINDS.find(([k]) => k === kindOf(p))[1]);
   const ids = p.vendor_ids || [];
   const free = vendors().filter(v => !ids.includes(v.id));
-  const done = !isOpen(p);   // a done project is shown read-only; its one action is Reopen
+  const done = !isOpen(p);   // a done record is shown read-only; its one action is Reopen
+  const last = rec && !done ? lastTime(p) : null;
+  const when = done ? `Done ${dateOf(p.completed_at)}${p.recurring_id && p.target_month ? ` · the ${monthLong(monthIdx(p.target_month))} time` : ''}`
+    : rec ? [p.target_month ? `Next: ${monthLong(monthIdx(p.target_month))}` : '', last ? `last done ${dateOf(last.completed_at)}` : 'not done yet'].filter(Boolean).join(' · ') : '';
   const off = done ? 'disabled' : '';
   $('sheet').innerHTML = `<div class="in"><div class="grab"></div><button class="close" type="button" id="s-close">${sheet === 'new' ? 'Cancel' : 'Close'}</button>
     <input class="t" id="s-title" value="${esc(p.title)}" placeholder="What needs to get done?" aria-label="Title" autocomplete="off" enterkeyhint="done" ${off}>
-    ${done ? `<div class="when" id="s-when">Done ${dateOf(p.completed_at)}</div>` : ''}
+    ${when ? `<div class="when" id="s-when">${when}</div>` : ''}
     <div class="fields">
-      <div class="field"><span class="k">Kind</span><span class="seg" id="s-kind">${[['task', 'Task'], ['project', 'Project']].map(([k, l]) => `<button type="button" data-kind="${k}" aria-pressed="${(task ? 'task' : 'project') === k}" ${off}>${l}</button>`).join('')}</span></div>
-      ${task ? '' : `<label class="field"><span class="k">Month</span><select id="s-month" aria-label="Month" ${off}>${monthOptions(p.target_month)}</select></label>`}
+      <div class="field"><span class="k">Kind</span><span class="seg" id="s-kind">${KINDS.map(([k, l]) => `<button type="button" data-kind="${k}" aria-pressed="${kindOf(p) === k}" ${off}>${l}</button>`).join('')}</span></div>
+      ${rec ? `<div class="field col"><span class="k">Months of the year</span><span class="seg months" id="s-months">${MONTHS.map((m, k) => `<button type="button" data-rmonth="${k + 1}" aria-pressed="${rhythm(p).includes(k + 1)}" ${off}>${m}</button>`).join('')}</span></div>` : ''}
+      ${task || rec ? '' : `<label class="field"><span class="k">Month</span><select id="s-month" aria-label="Month" ${off}>${monthOptions(p.target_month)}</select></label>`}
       <div class="field"><span class="k">Vendor</span><span class="vendors">
         ${ids.map(id => `<button class="vchip" type="button" data-unlink="${id}" aria-label="Remove ${esc(vendorName(id))}" ${off}>${esc(vendorName(id))}</button>`).join('')}
         ${done ? (ids.length ? '' : '<span>DIY</span>') : ''}<select id="s-vendor" aria-label="Add a vendor" ${done ? 'hidden' : ''}><option value="">${ids.length ? '+ Add' : 'DIY — add a vendor'}</option>${free.map(v => `<option value="${v.id}">${esc(v.name)}</option>`).join('')}<option value="__new">+ New vendor…</option></select>
       </span></div>
       ${task ? '' : `<div class="field"><span class="k">Effort</span><span class="seg">${EFFORTS.map(e => `<button type="button" data-eff="${e || ''}" aria-pressed="${p.effort === e}" ${off}>${e || '—'}</button>`).join('')}</span></div>
-      <label class="field"><span class="k">Estimated cost</span><input id="s-cost" inputmode="decimal" placeholder="$" value="${p.estimated_cost == null ? '' : p.estimated_cost}" aria-label="Estimated cost" autocomplete="off" ${off}></label>`}
+      <label class="field"><span class="k">${rec ? 'Cost each time' : 'Estimated cost'}</span><input id="s-cost" inputmode="decimal" placeholder="$" value="${p.estimated_cost == null ? '' : p.estimated_cost}" aria-label="Estimated cost" autocomplete="off" ${off}></label>`}
       <label class="field col"><span class="k">Notes</span><textarea id="s-notes" rows="2" aria-label="Notes" ${off}>${esc(p.description || '')}</textarea></label>
     </div>
     <div class="btns">${done
-      ? '<button class="btn pri" type="button" id="s-reopen">Reopen</button>'
+      ? (canReopen(p) ? '<button class="btn pri" type="button" id="s-reopen">Reopen</button>' : '')
       : sheet === 'new'
       ? '<button class="btn" type="button" id="s-cancel">Cancel</button><button class="btn pri" type="button" id="s-add">Add</button>'
       : '<button class="btn warn" type="button" id="s-delete">Delete</button><button class="btn pri" type="button" id="s-done">Mark done</button>'}</div>
@@ -645,25 +679,77 @@ function unlinkVendor(id){
   p.vendor_ids = (p.vendor_ids || []).filter(x => x !== id);
   commit(p); render();
 }
-// Task or project, picked in the sheet; the hidden fields stay in the record.
+// The kind, picked in the sheet; the hidden fields stay in the record.
+// Turning recurring gives a job without months the month it had (or this
+// one), and puts it on its next time.
 function setKind(k){
-  const p = current(); if (!p || !isOpen(p) || (k !== 'task' && k !== 'project')) return;
-  if (p.kind === k) return;
-  p.kind = k; commit(p); render();
+  const p = current(); if (!p || !isOpen(p) || !KINDS.some(([x]) => x === k)) return;
+  if (kindOf(p) === k) return;
+  p.kind = k;
+  if (k === 'recurring'){
+    if (!rhythm(p).length) p.recur_months = [(p.target_month ? monthIdx(p.target_month) : nowMonth()) % 12 + 1];
+    retarget(p);
+  }
+  commit(p); render();
 }
+// A job's next time after its months change: the first of its months from
+// the earlier of its current month and today — an overdue time stays due.
+function retarget(p){
+  const from = p.target_month ? Math.min(monthIdx(p.target_month), nowMonth()) : nowMonth();
+  p.target_month = nextOccurrence(rhythm(p), from);
+}
+// A month of the year on or off; the last one cannot go.
+function toggleMonth(m){
+  const p = current(); if (!p || !isOpen(p) || !isRecurring(p)) return;
+  const have = rhythm(p);
+  if (have.includes(m) && have.length === 1){ $('status').textContent = 'A recurring job needs at least one month.'; return; }
+  p.recur_months = have.includes(m) ? have.filter(x => x !== m) : have.concat(m).sort((a, b) => a - b);
+  retarget(p); commit(p); render();
+}
+const timesOf = p => state.projects.filter(q => q.recurring_id === p.id).sort((a, b) => cmp(a.completed_at || '', b.completed_at || ''));
+const lastTime = p => timesOf(p).slice(-1)[0] || null;
 function complete(id){
   const p = find(id);
   if (!p || !isOpen(p)) return;
+  if (isRecurring(p)){ completeTime(p); return; }
   p.status = 'completed'; p.completed_at = nowIso(); touch(p);
   save(); closeSheet();
   toast(`Done: ${p.title}`, id);
 }
+// A recurring job done: a copy of it, dated, goes to Done; the job moves on
+// to the first of its months after both this time and today.
+function completeTime(p){
+  const t = nowIso();
+  const time = { ...JSON.parse(JSON.stringify(p)), id: newId(), recurring_id: p.id, status: 'completed', completed_at: t, created_at: t, updated_at: t };
+  const from = Math.max(p.target_month ? monthIdx(p.target_month) : nowMonth(), nowMonth()) + 1;
+  p.target_month = time.next_month = nextOccurrence(rhythm(p), from);
+  touch(p);
+  state.projects.push(time);
+  save(); closeSheet();
+  toast(`Done: ${p.title} · next ${monthLong(monthIdx(p.target_month))}`, time.id);
+}
 // Marking done is reversible: Undo on the toast right after, or Reopen
-// from the project's sheet in Done any time later. Reopening puts it back
-// in Plan with the month, vendors, effort and cost it had.
+// from the sheet in Done any time later. Reopening puts it back in Plan
+// with the month, vendors, effort and cost it had. A recurring job's done
+// time reopens only while it is the job's latest and the job still sits
+// where that time moved it: then the time is taken back and the job
+// returns to its month.
+function canReopen(p){
+  if (!p.recurring_id) return true;
+  const job = find(p.recurring_id);
+  return !!job && lastTime(job) === p && job.target_month === p.next_month;
+}
 function reopen(id){
   const p = find(id);
-  if (!p || isOpen(p)) return;
+  if (!p || isOpen(p) || !canReopen(p)) return;
+  if (p.recurring_id){
+    const job = find(p.recurring_id);
+    job.target_month = p.target_month; touch(job);
+    state.projects = state.projects.filter(q => q.id !== p.id);
+    save(); sheet = null; draft = null; view = 'plan'; render();
+    toast(`Back in Plan: ${job.title}`, null);
+    return;
+  }
   p.status = 'backlog'; p.completed_at = null; touch(p);
   save(); sheet = null; draft = null; view = 'plan'; render();
   toast(`Back in Plan: ${p.title}`, null);
@@ -696,7 +782,7 @@ function askDelete(id){
 // Copy as text turns the open work into a message (vendorText, below).
 const names = id => p => (p.vendor_ids || []).includes(id);
 function projectCount(id){
-  return countWork(state.projects.filter(names(id)), 'no projects');
+  return countWork(state.projects.filter(p => !p.recurring_id && names(id)(p)), 'no projects');   // a job counts once, not per done time
 }
 function vendorGroups(id){
   const open = openList().filter(names(id));
@@ -742,7 +828,8 @@ function vendorText(id){
   if (!open.length) return 'Hi, I have no open jobs for you right now.\n';
   const out = ['Hi, here are the jobs I have for you:', ''];
   open.forEach((p, k) => {
-    const when = !isTask(p) && p.target_month ? ` (${monthSpoken(p.target_month)})` : '';
+    const every = isRecurring(p) ? (rhythm(p).length === 1 ? ', every year' : `; every ${rhythm(p).map(m => MONTHS_LONG[m - 1]).join(' and ').replace(/ and (?=.* and )/g, ', ')}`) : '';
+    const when = !isTask(p) && p.target_month ? ` (${monthSpoken(p.target_month)}${every})` : '';
     const cost = showCosts && !isTask(p) && p.estimated_cost != null ? ` — ${money(p.estimated_cost)}` : '';
     out.push(`${k + 1}. ${p.title}${when}${cost}`);
     for (const l of (p.description || '').split('\n').map(l => l.trim()).filter(Boolean)) out.push(`   ${l}`);
@@ -926,6 +1013,7 @@ document.addEventListener('click', e => {
   if (e.target.id === 'vs-delete'){ if (askDeleteVendor(vsheet)) closeSheet(); return; }
   const proj = e.target.closest('[data-project]'); if (proj){ openSheet(proj.dataset.project); return; }
   const kind = e.target.closest('[data-kind]');    if (kind){ setKind(kind.dataset.kind); return; }
+  const rm = e.target.closest('[data-rmonth]');    if (rm){ toggleMonth(Number(rm.dataset.rmonth)); return; }
   const eff = e.target.closest('[data-eff]');      if (eff){ const p = current(); if (!isOpen(p)) return; p.effort = eff.dataset.eff || null; commit(p); render(); return; }
   const un = e.target.closest('[data-unlink]');    if (un){ unlinkVendor(un.dataset.unlink); return; }
   if (e.target.id === 's-add'){ addDraft(); return; }

@@ -22,7 +22,7 @@ backlog*.
 Four places at the bottom: **Plan · Vendors · Budget · Done** (D9b-1).
 
 1. Work enters through the **+** button on Plan: a sheet opens with an
-   empty title and **Task · Project** (Project picked); Add saves it (a
+   empty title and **Task · Project · Recurring** (Project picked); Add saves it (a
    month, vendor, effort and cost can be set first, or later, or never).
    An empty title adds nothing. **A task** (D10) is a title and a vendor
    — no month, effort or cost is asked for. Open tasks sit together in
@@ -33,6 +33,19 @@ Four places at the bottom: **Plan · Vendors · Budget · Done** (D9b-1).
    hidden, so turning it back loses nothing. Records from before D10 are
    projects. Everything below said of a project holds for a task unless
    it names a month, effort or cost.
+   **A recurring job** (D11) is vendor work that comes back in fixed
+   **months of the year** — one or more, picked as twelve toggles in the
+   sheet (the last one cannot go); anything rarer than yearly is a project.
+   It has a size and a **cost each time**, and no month picker: its
+   `target_month` is always its next time, so it sits in that month's
+   group on Plan (the row adds ↻ and its months). Turning work recurring
+   starts the rhythm at its month (or this one). **Mark done** leaves the
+   job open: a dated copy of that time goes to Done, and the job moves to
+   the first of its months after both that time and today (done early,
+   the next time is the one after). Its sheet says the next month and
+   when it was last done. Undo, or Reopen on that time's sheet, takes the
+   time back and returns the job to its month — only for the latest time,
+   and only while the job is where that time put it; older times stay.
 2. **Plan is the one list** of open projects, and the **target month** is the
    priority, not position. It is grouped against today — **this month** (a
    month already past stays here, overdue) · **next month** · **next
@@ -61,7 +74,9 @@ Four places at the bottom: **Plan · Vendors · Budget · Done** (D9b-1).
 5. **Budget** is its own view, always computed, never stored: *planned* =
    open projects with a target month in the budget year (a past month still
    counts); *spent* = projects done in the budget year; *remaining* =
-   budget − planned − spent. Missing costs count as zero and are counted.
+   budget − planned − spent. A recurring job is planned once for every
+   time from its next month through December of the budget year, and each
+   done time is spent. Missing costs count as zero and are counted.
    Planned is listed by month; open projects with no month ("not planned
    yet") or a month in another year are shown apart and not counted. The
    budget figure is set by tapping it; the year is the current one.
@@ -82,7 +97,8 @@ Four places at the bottom: **Plan · Vendors · Budget · Done** (D9b-1).
    The costs toggle hides costs and totals for that screenshot; Copy as
    text gives a message to paste to the vendor as it is — a greeting, the
    open jobs numbered (tasks first, without month or cost) with their
-   month and notes, a sign-off; costs only
+   month — a recurring job adds its rhythm, "(October, every year)" — and
+   notes, a sign-off; costs only
    while shown, done work never. The list can also be **imported** from
    JSON on the Vendors view (a file or pasted text): a bare list, the app's
    own `vendors`, or the household seed's `contacts` — extra fields fold
@@ -92,8 +108,10 @@ Four places at the bottom: **Plan · Vendors · Budget · Done** (D9b-1).
    the one place vendor work is planned from.
 8. State is one JSON document in `localStorage` under `domus:v1`, on one
    device: `{ projects: [...], vendors: [...], budget: { year, amount,
-   currency } }`. `kind` is `'task'` or `'project'` (D10; records without
-   it gain `'project'` on load). Every project carries the spec's §4 fields from day one,
+   currency } }`. `kind` is `'task'`, `'project'` or `'recurring'` (D10,
+   D11; records without one gain `'project'` on load). A recurring job
+   carries `recur_months` (1–12); a done time carries `recurring_id`, its
+   own month in `target_month` and the job's next one in `next_month`. Every project carries the spec's §4 fields from day one,
    the unused ones empty (`dependency_ids`, `scheduled_*`,
    `calendar_event_id`), and `target_month` (`YYYY-MM` or null, D7 —
    records written before it gain it as null on load), so later stories
