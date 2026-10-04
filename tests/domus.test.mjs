@@ -796,3 +796,138 @@ test('a page whose vendor is deleted falls back to the Vendors list', () => {
   assert.equal(h.$('#view-vendor').hidden, true);
   assert.equal(h.$('#view-vendors').hidden, false);
 });
+
+/* ---- D10: the kind, and tasks ---- */
+
+// A vendor with a task and a project, a DIY task, and one done task; made-up names.
+const KIND_DOC = () => docV(
+  [vendor({ id: 'ace', name: 'Ace Handyman' })],
+  [
+    project({ id: 'stairs', title: 'Sand the stairs', vendor_ids: ['ace'], target_month: '2026-10', estimated_cost: 900, effort: 'L' }),
+    project({ id: 'lock', kind: 'task', title: 'Fix the door lock', vendor_ids: ['ace'], description: 'Back door' }),
+    project({ id: 'spoons', kind: 'task', title: 'Polish the spoons', vendor_ids: [] }),
+    project({ id: 'gate', kind: 'task', title: 'Oil the gate', vendor_ids: ['ace'], status: 'completed', completed_at: '2026-09-01T10:00:00.000Z' }),
+  ]);
+
+test('records from before D10 load as projects; the sheet offers Task or Project, Project picked for a new one', () => {
+  const h = boot({ seed: { [KEY]: doc([project({ id: 'a', title: 'A' })]) } });
+  assert.equal('kind' in h.stored().projects[0], false, 'loading does not rewrite the stored record');
+  h.open('a');
+  assert.deepEqual(h.$$('#s-kind [data-kind]').map(b => [b.textContent, b.getAttribute('aria-pressed')]), [['Task', 'false'], ['Project', 'true']]);
+  h.click('#s-close');
+  h.click('#add');
+  assert.equal(h.$('#s-kind [data-kind="project"]').getAttribute('aria-pressed'), 'true');
+  assert.ok(h.$('#s-month') && h.$('#s-cost'), 'a project asks for a month and a cost');
+});
+
+test('a task is added with a title and a vendor only, and sits at the top of Plan, outside the months', () => {
+  const h = boot({ seed: { [KEY]: docV([vendor({ id: 'ace', name: 'Ace Handyman' })], [project({ id: 'p', title: 'Paint the hall', target_month: '2026-09' })]) } });
+  h.click('#add');
+  h.$('#s-title').value = 'Fix the door lock';
+  h.$('#s-title').dispatchEvent(new h.w.Event('input', { bubbles: true }));
+  h.click('#s-kind [data-kind="task"]');
+  assert.equal(h.$('#s-title').value, 'Fix the door lock', 'the title survives the re-render');
+  assert.equal(h.$('#s-month'), null, 'no month');
+  assert.equal(h.$('#s-cost'), null, 'no cost');
+  assert.equal(h.$('[data-eff]'), null, 'no size');
+  assert.equal(h.$('#sheet').getAttribute('aria-label'), 'Task');
+  h.set('s-vendor', 'ace');
+  h.click('#s-add');
+  const t = h.stored().projects.find(p => p.title === 'Fix the door lock');
+  assert.equal(t.kind, 'task');
+  assert.deepEqual(t.vendor_ids, ['ace']);
+  assert.equal(h.$('#plan .sec').hasAttribute('data-tasks'), true, 'Tasks come first');
+  assert.deepEqual([...h.w.document.querySelectorAll('#plan [data-tasks] .title')].map(e => e.textContent), ['Fix the door lock']);
+  assert.match(h.$('#plan [data-tasks] .sub').textContent, /Ace Handyman/);
+  assert.equal(h.$('#plan [data-tasks] .cost'), null, 'a task row carries no cost');
+  const g = groupsOf(h);
+  assert.deepEqual(g.this.titles, ['Paint the hall']);
+  assert.ok(Object.values(g).every(x => !x.titles.includes('Fix the door lock')), 'never in a month group');
+  assert.equal(h.$('#plan-aside').textContent, '2 open');
+});
+
+test('turning a project into a task hides its month, size and cost and takes it out of the budget; turning it back restores them', () => {
+  const seed = doc([project({ id: 'a', title: 'A', target_month: '2026-10', effort: 'M', estimated_cost: 400 })], { year: 2026, amount: 1000, currency: 'USD' });
+  const h = boot({ seed: { [KEY]: seed } });
+  h.open('a'); h.click('#s-kind [data-kind="task"]');
+  let a = h.stored().projects[0];
+  assert.equal(a.kind, 'task');
+  assert.deepEqual([a.target_month, a.effort, a.estimated_cost], ['2026-10', 'M', 400], 'kept in the record');
+  h.click('#s-close');
+  assert.equal(groupsOf(h).next.titles.length, 0);
+  h.click('#tab-budget');
+  assert.deepEqual(h.figures(), { spent: '$0', planned: '$0', remaining: '$1,000', uncosted: null });
+  h.click('#tab-plan');
+  h.open('a'); h.click('#s-kind [data-kind="project"]'); h.click('#s-close');
+  a = h.stored().projects[0];
+  assert.equal(a.kind, 'project');
+  assert.deepEqual(groupsOf(h).next.titles, ['A']);
+  h.click('#tab-budget');
+  assert.equal(h.figures().planned, '$400');
+});
+
+test('a task marked done goes to Done with its date, below the year\'s projects; Undo brings it back; it is never spent', () => {
+  const seed = docV([vendor({ id: 'ace', name: 'Ace Handyman' })], [
+    project({ id: 't', kind: 'task', title: 'Fix the door lock', vendor_ids: ['ace'], estimated_cost: 50 }),
+    project({ id: 'p', title: 'Porch', status: 'completed', completed_at: '2026-05-01T10:00:00.000Z', estimated_cost: 300 }),
+  ]);
+  seed.budget.amount = 1000;
+  const h = boot({ seed: { [KEY]: seed } });
+  h.open('t'); h.click('#s-done');
+  assert.equal(h.$('#toast-text').textContent, 'Done: Fix the door lock');
+  h.click('#tab-done');
+  assert.deepEqual(h.titles('done'), ['Porch', 'Fix the door lock']);
+  assert.match(h.$('#done .list.tasks').textContent, /Ace Handyman · Sep 19, 2026/);
+  assert.equal(h.$('#done-aside').textContent, '1 project, 1 task');
+  assert.equal(h.$('#done .sechead .sum').textContent, '$300', 'a task adds nothing to the year');
+  h.click('#tab-budget');
+  assert.equal(h.figures().spent, '$300');
+  h.click('#toast-undo');
+  assert.equal(h.stored().projects[0].status, 'backlog');
+  assert.deepEqual([...h.w.document.querySelectorAll('#plan [data-tasks] .title')].map(e => e.textContent), ['Fix the door lock']);
+});
+
+test('a done task opens read-only and can be reopened', () => {
+  const h = boot({ seed: { [KEY]: KIND_DOC() } });
+  h.click('#tab-done'); h.open('gate');
+  assert.equal(h.$('#s-kind [data-kind="task"]').disabled, true);
+  assert.equal(h.$('#s-reopen').textContent, 'Reopen');
+  h.click('#s-reopen');
+  assert.ok([...h.w.document.querySelectorAll('#plan [data-tasks] .title')].some(e => e.textContent === 'Oil the gate'));
+});
+
+test('the vendor page shows open tasks above the months, done tasks in Done; counts name both', () => {
+  const h = boot({ seed: { [KEY]: KIND_DOC() } });
+  h.click('#tab-vendors');
+  assert.deepEqual(pageText(h, '#vendors .count'), ['1 project, 2 tasks']);
+  openPage(h, 'ace');
+  assert.deepEqual(pageText(h, '#vendor-page .sechead h2'), ['Tasks', 'October 2026', 'Done · 1']);
+  assert.deepEqual(pageText(h, '#vendor-page .title'), ['Fix the door lock', 'Sand the stairs', 'Oil the gate']);
+  assert.equal(h.$('#vendor-page [data-project]'), null, 'still read-only');
+  assert.deepEqual(pageText(h, '#vendor-totals span'), ['open $900', 'done 2026 $0']);
+});
+
+test('Copy as text lists the tasks first, without month or cost, then the projects', async () => {
+  const d = KIND_DOC();
+  d.projects.find(p => p.id === 'lock').estimated_cost = 75;   // a cost left over from a project
+  d.projects.find(p => p.id === 'lock').target_month = '2026-11';
+  const h = boot({ seed: { [KEY]: d } });
+  let copied = null;
+  Object.defineProperty(h.w.navigator, 'clipboard', { value: { writeText: t => { copied = t; return Promise.resolve(); } }, configurable: true });
+  h.click('#tab-vendors'); openPage(h, 'ace');
+  h.click('#vendor-copy');
+  await new Promise(r => setTimeout(r, 0));
+  assert.equal(copied, [
+    'Hi, here are the jobs I have for you:', '',
+    '1. Fix the door lock',
+    '   Back door',
+    '2. Sand the stairs (October) — $900', '',
+    'Thanks!', '',
+  ].join('\n'));
+});
+
+test('a vendor a task names cannot be deleted', () => {
+  const h = boot({ seed: { [KEY]: docV([vendor({ id: 'ace', name: 'Ace Handyman' })], [project({ id: 't', kind: 'task', title: 'T', vendor_ids: ['ace'] })]) } });
+  assert.equal(h.w.askDeleteVendor('ace'), false);
+  assert.equal(h.$('#status').textContent, 'Ace Handyman is named by a project or task and stays.');
+});

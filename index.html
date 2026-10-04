@@ -210,7 +210,7 @@
 </div>
 
 <div class="toast" id="toast" role="status" hidden><span id="toast-text"></span><button type="button" id="toast-undo">Undo</button></div>
-<button class="fab" id="add" type="button" aria-label="Add a project">+</button>
+<button class="fab" id="add" type="button" aria-label="Add work">+</button>
 
 <nav class="nav"><div class="in" role="tablist" aria-label="Views">
   <button class="tab" role="tab" id="tab-plan" aria-selected="true">Plan</button>
@@ -223,7 +223,7 @@
 <div class="sheet" id="sheet" role="dialog" aria-modal="true" aria-label="Project" hidden></div>
 
 <!-- Keep in step with CACHE in sw.js — the visible proof of which build is running. -->
-<span class="ver">domus-v12</span>
+<span class="ver">domus-v13</span>
 
 <script>
 // State: one JSON document in localStorage, on one device. No backup, no sync.
@@ -236,6 +236,12 @@
 // had ('backlog', 'activated' …) and every status but 'completed' is open.
 // Its priority is its target month (D7). Everything about a project is
 // edited in the sheet that opens when its row is tapped.
+//
+// D10: a record is a project or a task (`kind`). A task is vendor work too
+// small for a month, size or cost — a title and a vendor. Turning a project
+// into a task keeps its month, effort and cost in the record, hidden and
+// out of every sum, so turning it back loses nothing. Records written
+// before D10 are projects.
 const KEY = 'domus:v1';
 const EFFORTS = [null, 'S', 'M', 'L'];
 const VENDOR_FIELDS = ['category', 'phone', 'email', 'website', 'notes'];
@@ -256,6 +262,7 @@ const cmp = (x, y) => x < y ? -1 : x > y ? 1 : 0;
 // Earlier month first, no month last, and within a month the newest last.
 const byMonth = (a, b) => cmp(a.target_month || '~', b.target_month || '~') || cmp(a.created_at || '', b.created_at || '');
 const isOpen = p => p.status !== 'completed';
+const isTask = p => p.kind === 'task';
 const openList = () => state.projects.filter(isOpen).sort(byMonth);
 const doneList = () => state.projects.filter(p => !isOpen(p)).sort((a, b) => cmp(b.completed_at || '', a.completed_at || ''));
 const find = id => state.projects.find(p => p.id === id);
@@ -265,7 +272,12 @@ const vendorInUse = id => state.projects.some(p => (p.vendor_ids || []).includes
 const vendorName = id => (findVendor(id) || {}).name || '?';
 const yearOf = iso => Number((iso || '').slice(0, 4));
 const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
-const sumCost = list => list.reduce((s, p) => s + (p.estimated_cost || 0), 0);
+const sumCost = list => list.reduce((s, p) => s + (isTask(p) ? 0 : p.estimated_cost || 0), 0);   // a task never costs
+// "2 projects, 1 task" — what a list holds, the empty kind left out.
+function countWork(list, none = ''){
+  const t = list.filter(isTask).length, pr = list.length - t;
+  return [pr ? plural(pr, 'project') : '', t ? plural(t, 'task') : ''].filter(Boolean).join(', ') || none;
+}
 
 function money(n){
   if (n == null) return '—';
@@ -311,7 +323,8 @@ function groupHead(g){
   return ['Later', ''];
 }
 
-// The budget arithmetic — computed on every render, never stored.
+// The budget arithmetic — computed on every render, never stored. Tasks
+// are not in it at all (D10).
 // planned = open projects with a target month in the budget year (a month
 // already past still counts: the work is still coming); spent = projects
 // done in the budget year; remaining = budget − both. A missing cost counts
@@ -319,10 +332,10 @@ function groupHead(g){
 // another year, are not planned for this budget and are shown apart.
 function budgetFigures(){
   const year = state.budget.year;
-  const open = openList();
+  const open = openList().filter(p => !isTask(p));
   const planned = open.filter(p => p.target_month && Number(p.target_month.slice(0, 4)) === year);
   const unplanned = open.filter(p => !planned.includes(p));
-  const spent = doneList().filter(p => yearOf(p.completed_at) === year);
+  const spent = doneList().filter(p => !isTask(p) && yearOf(p.completed_at) === year);
   const amount = state.budget.amount;
   return {
     year, amount, planned, unplanned, spent,
@@ -345,6 +358,7 @@ function load(){
   if (!Array.isArray(state.projects)) state.projects = [];
   if (!Array.isArray(state.vendors)) state.vendors = [];   // documents written before D2a have none
   for (const p of state.projects) if (!('target_month' in p)) p.target_month = null;   // records written before D7
+  for (const p of state.projects) if (p.kind !== 'task') p.kind = 'project';           // records written before D10
   view = 'plan'; sheet = null;
   render();
 }
@@ -368,6 +382,7 @@ function tintOf(vendorId){
 // A card: the title, one quiet line (a month where the group does not say
 // it · who · effort) and the cost. Tapping it opens the sheet.
 function row(p, { month = false, date = false } = {}){
+  if (isTask(p)) return taskRow(p, { date });
   const ids = p.vendor_ids || [];
   const who = ids.length ? ids.map(vendorName).join(', ') : 'DIY';
   const bits = [];
@@ -381,12 +396,33 @@ function row(p, { month = false, date = false } = {}){
     </button>`;
 }
 
+// A task is a slim row, not a card: the vendor's mark, the title, who —
+// nothing to cost or schedule. `tag` 'div' makes it read-only and drops the
+// who line (the vendor page, where it would only repeat the vendor).
+function taskRow(p, { date = false, tag = 'button' } = {}){
+  const ids = p.vendor_ids || [];
+  const bits = [ids.length ? ids.map(vendorName).join(', ') : 'DIY'];
+  if (date && p.completed_at) bits.push(dateOf(p.completed_at));
+  const attrs = tag === 'button' ? ` data-project="${p.id}" type="button"` : '';
+  return `<${tag} class="item task"${attrs}>
+      <span class="mark ${tintOf(ids[0])}"></span>
+      <span class="body"><span class="title">${esc(p.title)}</span>${tag === 'button' ? `<span class="sub" style="display:block">${esc(bits.join(' · '))}</span>` : ''}</span>
+    </${tag}>`;
+}
+const taskList = (items, opts) => `<div class="list tasks">${items.map(p => taskRow(p, opts)).join('')}</div>`;
+
 function renderPlan(){
   const open = openList();
   $('plan-aside').textContent = open.length ? `${open.length} open` : '';
   if (!open.length){ $('plan').innerHTML = '<div class="board-empty">Nothing planned. Tap + to add what needs to get done.</div>'; return; }
-  $('plan').innerHTML = GROUPS.map(g => {
-    const items = open.filter(p => groupOf(p) === g);
+  const tasks = open.filter(isTask), projects = open.filter(p => !isTask(p));
+  // Open tasks sit together above the months — they have none (D10).
+  const top = tasks.length ? `<div class="sec" data-tasks>
+      <div class="sechead"><h2>Tasks</h2><span class="sum">${tasks.length}</span></div>
+      ${taskList(tasks)}
+    </div>` : '';
+  $('plan').innerHTML = top + GROUPS.map(g => {
+    const items = projects.filter(p => groupOf(p) === g);
     const [head, range] = groupHead(g);
     const sum = [range, items.length ? money(sumCost(items)) : ''].filter(Boolean).join(' · ');
     return `<div class="sec" data-group="${g}">
@@ -398,14 +434,21 @@ function renderPlan(){
 
 function renderDone(){
   const done = doneList();
-  $('done-aside').textContent = done.length ? plural(done.length, 'project') : '';
+  $('done-aside').textContent = countWork(done);
   if (!done.length){ $('done').innerHTML = '<div class="board-empty">Nothing done yet. Mark a project done from its sheet.</div>'; return; }
   const years = [...new Set(done.map(p => yearOf(p.completed_at)))];
   $('done').innerHTML = years.map(y => {
     const items = done.filter(p => yearOf(p.completed_at) === y);
     return `<div class="sec"><div class="sechead"><h2>${y}</h2><span class="sum">${money(sumCost(items))}</span></div>
-      <div class="list cards">${items.map(p => row(p, { date: true })).join('')}</div></div>`;
-  }).join('') + '<p class="note">Done projects are kept and never deleted. Tap one to see it, or to reopen it if it was marked done by mistake.</p>';
+      ${doneBlock(items, p => row(p, { date: true }), opts => taskList(items.filter(isTask), { date: true, ...opts }))}</div>`;
+  }).join('') + '<p class="note">Done work is kept and never deleted. Tap one to see it, or to reopen it if it was marked done by mistake.</p>';
+}
+
+// One year of done work: the projects as cards, then the tasks as rows.
+function doneBlock(items, card, tasks){
+  const pr = items.filter(p => !isTask(p));
+  return (pr.length ? `<div class="list cards">${pr.map(card).join('')}</div>` : '')
+    + (items.some(isTask) ? tasks({}) : '');
 }
 
 function renderBudget(){
@@ -517,7 +560,8 @@ function renderSheet(){
   $('sheet').hidden = $('dim').hidden = !p && !v;
   if (v){ renderVendorSheet(v); return; }
   if (!p) return;
-  $('sheet').setAttribute('aria-label', 'Project');
+  const task = isTask(p);
+  $('sheet').setAttribute('aria-label', task ? 'Task' : 'Project');
   const ids = p.vendor_ids || [];
   const free = vendors().filter(v => !ids.includes(v.id));
   const done = !isOpen(p);   // a done project is shown read-only; its one action is Reopen
@@ -526,13 +570,14 @@ function renderSheet(){
     <input class="t" id="s-title" value="${esc(p.title)}" placeholder="What needs to get done?" aria-label="Title" autocomplete="off" enterkeyhint="done" ${off}>
     ${done ? `<div class="when" id="s-when">Done ${dateOf(p.completed_at)}</div>` : ''}
     <div class="fields">
-      <label class="field"><span class="k">Month</span><select id="s-month" aria-label="Month" ${off}>${monthOptions(p.target_month)}</select></label>
+      <div class="field"><span class="k">Kind</span><span class="seg" id="s-kind">${[['task', 'Task'], ['project', 'Project']].map(([k, l]) => `<button type="button" data-kind="${k}" aria-pressed="${(task ? 'task' : 'project') === k}" ${off}>${l}</button>`).join('')}</span></div>
+      ${task ? '' : `<label class="field"><span class="k">Month</span><select id="s-month" aria-label="Month" ${off}>${monthOptions(p.target_month)}</select></label>`}
       <div class="field"><span class="k">Vendor</span><span class="vendors">
         ${ids.map(id => `<button class="vchip" type="button" data-unlink="${id}" aria-label="Remove ${esc(vendorName(id))}" ${off}>${esc(vendorName(id))}</button>`).join('')}
         ${done ? (ids.length ? '' : '<span>DIY</span>') : ''}<select id="s-vendor" aria-label="Add a vendor" ${done ? 'hidden' : ''}><option value="">${ids.length ? '+ Add' : 'DIY — add a vendor'}</option>${free.map(v => `<option value="${v.id}">${esc(v.name)}</option>`).join('')}<option value="__new">+ New vendor…</option></select>
       </span></div>
-      <div class="field"><span class="k">Effort</span><span class="seg">${EFFORTS.map(e => `<button type="button" data-eff="${e || ''}" aria-pressed="${p.effort === e}" ${off}>${e || '—'}</button>`).join('')}</span></div>
-      <label class="field"><span class="k">Estimated cost</span><input id="s-cost" inputmode="decimal" placeholder="$" value="${p.estimated_cost == null ? '' : p.estimated_cost}" aria-label="Estimated cost" autocomplete="off" ${off}></label>
+      ${task ? '' : `<div class="field"><span class="k">Effort</span><span class="seg">${EFFORTS.map(e => `<button type="button" data-eff="${e || ''}" aria-pressed="${p.effort === e}" ${off}>${e || '—'}</button>`).join('')}</span></div>
+      <label class="field"><span class="k">Estimated cost</span><input id="s-cost" inputmode="decimal" placeholder="$" value="${p.estimated_cost == null ? '' : p.estimated_cost}" aria-label="Estimated cost" autocomplete="off" ${off}></label>`}
       <label class="field col"><span class="k">Notes</span><textarea id="s-notes" rows="2" aria-label="Notes" ${off}>${esc(p.description || '')}</textarea></label>
     </div>
     <div class="btns">${done
@@ -549,7 +594,7 @@ function closeSheet(){ sheet = null; draft = null; vsheet = null; render(); }
 function newProject(){
   const t = nowIso();
   return {
-    id: newId(), title: '', description: '', priority_order: null, target_month: null,
+    id: newId(), kind: 'project', title: '', description: '', priority_order: null, target_month: null,
     effort: null, estimated_cost: null, status: 'backlog',
     assignee_id: null, vendor_ids: [], dependency_ids: [],
     scheduled_start: null, scheduled_duration_minutes: null, calendar_event_id: null,
@@ -600,6 +645,12 @@ function unlinkVendor(id){
   p.vendor_ids = (p.vendor_ids || []).filter(x => x !== id);
   commit(p); render();
 }
+// Task or project, picked in the sheet; the hidden fields stay in the record.
+function setKind(k){
+  const p = current(); if (!p || !isOpen(p) || (k !== 'task' && k !== 'project')) return;
+  if (p.kind === k) return;
+  p.kind = k; commit(p); render();
+}
 function complete(id){
   const p = find(id);
   if (!p || !isOpen(p)) return;
@@ -645,17 +696,17 @@ function askDelete(id){
 // Copy as text turns the open work into a message (vendorText, below).
 const names = id => p => (p.vendor_ids || []).includes(id);
 function projectCount(id){
-  const n = state.projects.filter(names(id)).length;
-  return n ? plural(n, 'project') : 'no projects';
+  return countWork(state.projects.filter(names(id)), 'no projects');
 }
 function vendorGroups(id){
   const open = openList().filter(names(id));
-  const months = [...new Set(open.map(p => p.target_month || ''))].sort((a, b) => cmp(a || '~', b || '~'));
+  const tasks = open.filter(isTask), projects = open.filter(p => !isTask(p));
+  const months = [...new Set(projects.map(p => p.target_month || ''))].sort((a, b) => cmp(a || '~', b || '~'));
   const co = doneList().filter(names(id));
   const years = [...new Set(co.map(p => yearOf(p.completed_at)))].sort((a, b) => b - a);
   return {
-    open, co, years,
-    months: months.map(m => ({ label: m ? monthLong(monthIdx(m)) : 'No month yet', items: open.filter(p => (p.target_month || '') === m) })),
+    open, tasks, co, years,
+    months: months.map(m => ({ label: m ? monthLong(monthIdx(m)) : 'No month yet', items: projects.filter(p => (p.target_month || '') === m) })),
     inYear: y => co.filter(p => yearOf(p.completed_at) === y),
   };
 }
@@ -669,27 +720,30 @@ function renderVendorPage(v){
     <h1>${esc(v.name)}</h1>
     <div class="vsub">${esc(sub)}</div>
     <div class="vtools"><button class="pill pri" id="vendor-copy" type="button">Copy as text</button>${phone}<button class="pill" id="vendor-costs" type="button" aria-pressed="${showCosts}">Costs: ${showCosts ? 'on' : 'off'}</button></div>
-    ${g.months.length ? g.months.map(m => `<div class="sec"><div class="sechead"><h2>${m.label}</h2><span class="sum">${showCosts ? money(sumCost(m.items)) : ''}</span></div><div class="list cards">${m.items.map(line).join('')}</div></div>`).join('')
+    ${g.tasks.length ? `<div class="sec"><div class="sechead"><h2>Tasks</h2><span class="sum">${g.tasks.length}</span></div>${taskList(g.tasks, { tag: 'div' })}</div>` : ''}
+    ${g.tasks.length || g.months.length ? g.months.map(m => `<div class="sec"><div class="sechead"><h2>${m.label}</h2><span class="sum">${showCosts ? money(sumCost(m.items)) : ''}</span></div><div class="list cards">${m.items.map(line).join('')}</div></div>`).join('')
       : '<div class="sec"><div class="board-empty">Nothing open.</div></div>'}
     <details id="vendor-completed" class="sec" ${completedOpen ? 'open' : ''}><summary><div class="sechead"><h2>Done · ${g.co.length}</h2></div></summary>
-      ${g.co.length ? g.years.map(y => `<h3>${y}</h3><div class="list cards">${g.inYear(y).map(line).join('')}</div>`).join('') : '<div class="board-empty">Nothing done yet.</div>'}
+      ${g.co.length ? g.years.map(y => `<h3>${y}</h3>${doneBlock(g.inYear(y), line, () => taskList(g.inYear(y).filter(isTask), { tag: 'div' }))}`).join('') : '<div class="board-empty">Nothing done yet.</div>'}
     </details>
     ${totals}`;
 }
 // The copied text is a message to send as it is (D9c, N.'s pick 2026-09-30):
-// a greeting, the open jobs as one numbered list in the page's order, the
+// a greeting, the open jobs as one numbered list in the page's order (tasks
+// first, with neither month nor cost — D10), the
 // month in brackets (its year only when it is a year or more away), the
 // notes indented under the job, a sign-off. Costs only while shown; done
 // work never goes in — it is what is still to do.
 const MONTHS_LONG = MONTHS.map((m, k) => new Date(2000, k, 1).toLocaleDateString('en-US', { month: 'long' }));
 const monthSpoken = ym => { const i = monthIdx(ym); return i - nowMonth() < 12 ? MONTHS_LONG[i % 12] : monthLong(i); };
 function vendorText(id){
-  const open = vendorGroups(id).months.flatMap(m => m.items);
+  const g = vendorGroups(id);
+  const open = g.tasks.concat(g.months.flatMap(m => m.items));
   if (!open.length) return 'Hi, I have no open jobs for you right now.\n';
   const out = ['Hi, here are the jobs I have for you:', ''];
   open.forEach((p, k) => {
-    const when = p.target_month ? ` (${monthSpoken(p.target_month)})` : '';
-    const cost = showCosts && p.estimated_cost != null ? ` — ${money(p.estimated_cost)}` : '';
+    const when = !isTask(p) && p.target_month ? ` (${monthSpoken(p.target_month)})` : '';
+    const cost = showCosts && !isTask(p) && p.estimated_cost != null ? ` — ${money(p.estimated_cost)}` : '';
     out.push(`${k + 1}. ${p.title}${when}${cost}`);
     for (const l of (p.description || '').split('\n').map(l => l.trim()).filter(Boolean)) out.push(`   ${l}`);
   });
@@ -721,12 +775,12 @@ function createVendor(name){
   return v;
 }
 
-// A vendor a project still names cannot be deleted — the link is the
-// project's, not the directory's. Otherwise: confirm.
+// A vendor a project or task still names cannot be deleted — the link is
+// the record's, not the directory's. Otherwise: confirm.
 function askDeleteVendor(id){
   const v = findVendor(id);
   if (!v) return false;
-  if (vendorInUse(id)){ $('status').textContent = `${v.name} is named by a project and stays.`; return false; }
+  if (vendorInUse(id)){ $('status').textContent = `${v.name} is named by a project or task and stays.`; return false; }
   if (!window.confirm(`Delete "${v.name}" from the vendors?`)) return false;
   state.vendors = state.vendors.filter(q => q.id !== id);
   render(); save();
@@ -871,6 +925,7 @@ document.addEventListener('click', e => {
   const vs = e.target.closest('[data-vsheet]');    if (vs){ vsheet = vs.dataset.vsheet; render(); return; }
   if (e.target.id === 'vs-delete'){ if (askDeleteVendor(vsheet)) closeSheet(); return; }
   const proj = e.target.closest('[data-project]'); if (proj){ openSheet(proj.dataset.project); return; }
+  const kind = e.target.closest('[data-kind]');    if (kind){ setKind(kind.dataset.kind); return; }
   const eff = e.target.closest('[data-eff]');      if (eff){ const p = current(); if (!isOpen(p)) return; p.effort = eff.dataset.eff || null; commit(p); render(); return; }
   const un = e.target.closest('[data-unlink]');    if (un){ unlinkVendor(un.dataset.unlink); return; }
   if (e.target.id === 's-add'){ addDraft(); return; }

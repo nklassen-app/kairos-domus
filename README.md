@@ -1,10 +1,13 @@
 # Domus
 
-The household projects backlog: one list of home-improvement work planned by
-month, with an estimated cost per project and the year's budget in its own
-view — what is planned, what is spent, what is left. Projects are completed
-with a date and kept; the vendors who do the work have a directory. Not a chore app: mundane tasks live on the
-Whiteboard and never enter here.
+The household work backlog: everything the household's vendors do, in one
+list — small **tasks** (fix a door lock) and **projects** planned by month,
+with an estimated cost per project and the year's budget in its own view —
+what is planned, what is spent, what is left. Work is completed with a date
+and kept; the vendors who do it have a directory. **The line with the
+Whiteboard is who does the work** (2026-10-03): work the support team does
+belongs here, however small; what N. does alone belongs on the Whiteboard.
+A DIY project stays here.
 
 Local-first single page, no build step, no dependencies, no account. Hosted on
 GitHub Pages and wrapped in a Capacitor shell for the phone, the same way as
@@ -18,9 +21,18 @@ backlog*.
 
 Four places at the bottom: **Plan · Vendors · Budget · Done** (D9b-1).
 
-1. A project enters through the **+** button on Plan: a sheet opens with an
-   empty title; Add saves it (a month, vendor, effort and cost can be set
-   first, or later, or never). An empty title adds nothing.
+1. Work enters through the **+** button on Plan: a sheet opens with an
+   empty title and **Task · Project** (Project picked); Add saves it (a
+   month, vendor, effort and cost can be set first, or later, or never).
+   An empty title adds nothing. **A task** (D10) is a title and a vendor
+   — no month, effort or cost is asked for. Open tasks sit together in
+   **Tasks** at the top of Plan, as slim rows with the vendor's mark, above
+   the month groups and never in them; they count in no sum and never in
+   the budget. The kind is changed in the sheet, both ways: a project
+   turned into a task keeps its month, effort and cost in the record,
+   hidden, so turning it back loses nothing. Records from before D10 are
+   projects. Everything below said of a project holds for a task unless
+   it names a month, effort or cost.
 2. **Plan is the one list** of open projects, and the **target month** is the
    priority, not position. It is grouped against today — **this month** (a
    month already past stays here, overdue) · **next month** · **next
@@ -65,9 +77,12 @@ Four places at the bottom: **Plan · Vendors · Budget · Done** (D9b-1).
    chip removes it. The "Page · N projects" button in a vendor's sheet opens
    the **vendor page**: open work grouped by month, Done collapsed by year —
    read-only and without the budget, so a screenshot can go to the vendor.
+   Open tasks come first on the page, under **Tasks**; done tasks sit in
+   Done below the year's projects.
    The costs toggle hides costs and totals for that screenshot; Copy as
    text gives a message to paste to the vendor as it is — a greeting, the
-   open jobs numbered with their month and notes, a sign-off; costs only
+   open jobs numbered (tasks first, without month or cost) with their
+   month and notes, a sign-off; costs only
    while shown, done work never. The list can also be **imported** from
    JSON on the Vendors view (a file or pasted text): a bare list, the app's
    own `vendors`, or the household seed's `contacts` — extra fields fold
@@ -77,7 +92,8 @@ Four places at the bottom: **Plan · Vendors · Budget · Done** (D9b-1).
    the one place vendor work is planned from.
 8. State is one JSON document in `localStorage` under `domus:v1`, on one
    device: `{ projects: [...], vendors: [...], budget: { year, amount,
-   currency } }`. Every project carries the spec's §4 fields from day one,
+   currency } }`. `kind` is `'task'` or `'project'` (D10; records without
+   it gain `'project'` on load). Every project carries the spec's §4 fields from day one,
    the unused ones empty (`dependency_ids`, `scheduled_*`,
    `calendar_event_id`), and `target_month` (`YYYY-MM` or null, D7 —
    records written before it gain it as null on load), so later stories
