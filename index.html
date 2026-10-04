@@ -86,6 +86,18 @@
   .seg{display:flex;gap:4px;}
   .seg button{border:none;background:var(--hair);border-radius:999px;padding:6px 12px;font-size:13px;font-weight:650;cursor:pointer;}
   .seg button[aria-pressed="true"]{background:var(--accent);color:#fff;}
+  .stepshead{margin:18px 4px 8px;}
+  .step{display:grid;grid-template-columns:auto 1fr auto;align-items:center;column-gap:10px;padding:8px 0;}
+  .step + .step{border-top:1px solid var(--hair);}
+  .step input[type="checkbox"]{width:20px;height:20px;accent-color:var(--accent);margin:0;}
+  .step input.stt{font:inherit;font-size:15px;color:var(--ink);background:transparent;border:none;padding:4px 0;min-width:0;}
+  .step input.stt:focus{outline:none;}
+  .step.new input.stt{grid-column:1 / -1;}
+  .step select{grid-column:2 / -1;justify-self:start;font:inherit;font-size:13px;font-weight:600;color:var(--accent);background:transparent;border:none;padding:2px 0;}
+  .step .mini{background:none;border:none;color:var(--muted);font-size:17px;padding:2px 6px;cursor:pointer;}
+  .item .steps{display:flex;flex-direction:column;gap:2px;margin-top:6px;font-size:12.5px;color:var(--muted);}
+  .item .steps .st.mine{color:var(--ink);font-weight:600;}
+  .item .steps .st.done{text-decoration:line-through;}
   .seg.months{display:grid;grid-template-columns:repeat(6,1fr);gap:6px;margin-top:8px;}
   .seg.months button{padding:7px 0;}
   .vendors{display:flex;flex-wrap:wrap;gap:6px;justify-content:flex-end;align-items:center;}
@@ -225,7 +237,7 @@
 <div class="sheet" id="sheet" role="dialog" aria-modal="true" aria-label="Project" hidden></div>
 
 <!-- Keep in step with CACHE in sw.js — the visible proof of which build is running. -->
-<span class="ver">domus-v14</span>
+<span class="ver">domus-v15</span>
 
 <script>
 // State: one JSON document in localStorage, on one device. No backup, no sync.
@@ -253,6 +265,13 @@
 // `target_month`, the month it moved the job to in `next_month`) goes to
 // Done, and the job moves to its next month. The budget counts every time
 // still to come in the budget year as planned, each done time as spent.
+//
+// D12: a project can carry `steps` — an ordered list of { id, title,
+// vendor_id (null = DIY), done }. Cost, size and month stay on the project.
+// Who works on a project is its own vendors and every step's vendor, so it
+// shows whole on each of their pages. Ticking the last step offers Mark
+// done; a project is never done by itself. Tasks and recurring jobs carry
+// no steps (a project turned into either keeps them, hidden).
 const KEY = 'domus:v1';
 const EFFORTS = [null, 'S', 'M', 'L'];
 const VENDOR_FIELDS = ['category', 'phone', 'email', 'website', 'notes'];
@@ -277,6 +296,9 @@ const isTask = p => p.kind === 'task';
 const isRecurring = p => p.kind === 'recurring';
 const KINDS = [['task', 'Task'], ['project', 'Project'], ['recurring', 'Recurring']];
 const kindOf = p => isTask(p) ? 'task' : isRecurring(p) ? 'recurring' : 'project';
+const stepsOf = p => isTask(p) || isRecurring(p) ? [] : (p.steps || []);
+// Everyone who works on it: its own vendors, then its steps' vendors.
+const whoIds = p => [...new Set((p.vendor_ids || []).concat(stepsOf(p).map(st => st.vendor_id).filter(Boolean)))];
 const rhythm = p => (p.recur_months || []).slice().sort((a, b) => a - b);
 // The first month of a rhythm at or after month index `from`.
 function nextOccurrence(months, from){
@@ -288,7 +310,7 @@ const doneList = () => state.projects.filter(p => !isOpen(p)).sort((a, b) => cmp
 const find = id => state.projects.find(p => p.id === id);
 const vendors = () => state.vendors.slice().sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
 const findVendor = id => state.vendors.find(v => v.id === id);
-const vendorInUse = id => state.projects.some(p => (p.vendor_ids || []).includes(id));
+const vendorInUse = id => state.projects.some(p => (p.vendor_ids || []).includes(id) || (p.steps || []).some(st => st.vendor_id === id));
 const vendorName = id => (findVendor(id) || {}).name || '?';
 const yearOf = iso => Number((iso || '').slice(0, 4));
 const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
@@ -412,13 +434,14 @@ function tintOf(vendorId){
 // it · who · effort) and the cost. Tapping it opens the sheet.
 function row(p, { month = false, date = false } = {}){
   if (isTask(p)) return taskRow(p, { date });
-  const ids = p.vendor_ids || [];
+  const ids = whoIds(p), steps = stepsOf(p);
   const who = ids.length ? ids.map(vendorName).join(', ') : 'DIY';
   const bits = [];
   if (month && p.target_month) bits.push(monthShort(monthIdx(p.target_month)));
   if (isRecurring(p)) bits.push('↻ ' + rhythm(p).map(m => MONTHS[m - 1]).join(', '));
   bits.push(who);
   if (p.effort) bits.push(p.effort);
+  if (steps.length) bits.push(`${steps.filter(st => st.done).length}/${steps.length} steps`);
   if (date && p.completed_at) bits.push(dateOf(p.completed_at));
   return `<button class="item ${tintOf(ids[0])}" data-project="${p.id}" type="button">
       <span class="body"><span class="title">${esc(p.title)}</span><span class="sub" style="display:block">${esc(bits.join(' · '))}</span></span>
@@ -614,6 +637,7 @@ function renderSheet(){
       <label class="field"><span class="k">${rec ? 'Cost each time' : 'Estimated cost'}</span><input id="s-cost" inputmode="decimal" placeholder="$" value="${p.estimated_cost == null ? '' : p.estimated_cost}" aria-label="Estimated cost" autocomplete="off" ${off}></label>`}
       <label class="field col"><span class="k">Notes</span><textarea id="s-notes" rows="2" aria-label="Notes" ${off}>${esc(p.description || '')}</textarea></label>
     </div>
+    ${task || rec ? '' : stepsSection(p, done, off)}
     <div class="btns">${done
       ? (canReopen(p) ? '<button class="btn pri" type="button" id="s-reopen">Reopen</button>' : '')
       : sheet === 'new'
@@ -621,6 +645,43 @@ function renderSheet(){
       : '<button class="btn warn" type="button" id="s-delete">Delete</button><button class="btn pri" type="button" id="s-done">Mark done</button>'}</div>
   </div>`;
 }
+// The steps (D12): tick, title, who, move up, remove; a field to add one.
+function stepsSection(p, done, off){
+  const steps = p.steps || [];
+  const n = steps.filter(st => st.done).length;
+  const who = st => `<select data-stepvendor="${st.id}" aria-label="Who does ${esc(st.title)}" ${off}><option value="">DIY</option>${vendors().map(v => `<option value="${v.id}" ${st.vendor_id === v.id ? 'selected' : ''}>${esc(v.name)}</option>`).join('')}</select>`;
+  return `<div class="sechead stepshead"><h2>Steps</h2><span class="sum">${steps.length ? `${n} of ${steps.length} done` : ''}</span></div>
+    <div class="fields" id="s-steps">
+      ${steps.map((st, k) => `<div class="step" data-step="${st.id}">
+        <input type="checkbox" data-steptick="${st.id}" ${st.done ? 'checked' : ''} aria-label="Done: ${esc(st.title)}" ${off}>
+        <input class="stt" data-steptitle="${st.id}" value="${esc(st.title)}" aria-label="Step" autocomplete="off" enterkeyhint="done" ${off}>
+        ${done ? '' : `<span class="stbtns">${k ? `<button type="button" class="mini" data-stepup="${st.id}" aria-label="Move up">↑</button>` : ''}<button type="button" class="mini" data-stepdel="${st.id}" aria-label="Remove step">×</button></span>`}
+        ${who(st)}
+      </div>`).join('')}
+      ${done ? '' : `<div class="step new"><input class="stt" id="s-newstep" placeholder="Add a step" aria-label="Add a step" autocomplete="off" enterkeyhint="done"></div>`}
+    </div>
+    ${!done && steps.length && n === steps.length ? '<p class="note" id="s-alldone">All steps done — mark the project done?</p>' : ''}`;
+}
+const findStep = (p, id) => (p.steps || []).find(st => st.id === id);
+function addStep(title){
+  const p = current(); if (!p || !isOpen(p)) return;
+  const t = title.trim(); if (!t) return;
+  p.steps = (p.steps || []).concat({ id: newId(), title: t, vendor_id: null, done: false });
+  commit(p); render();
+  const f = $('s-newstep'); if (f) f.focus();
+}
+function editStep(id, change){
+  const p = current(); if (!p || !isOpen(p)) return;
+  const st = findStep(p, id); if (!st) return;
+  if (change(st, p) === false) return;
+  commit(p); render();
+}
+const stepTitle = (id, v) => editStep(id, st => { const t = v.trim(); if (!t || t === st.title){ render(); return false; } st.title = t; });   // empty keeps the old title
+const stepVendor = (id, v) => editStep(id, st => { st.vendor_id = v || null; });
+const stepTick = (id, on) => editStep(id, st => { st.done = !!on; });
+const stepUp = id => editStep(id, (st, p) => { const k = p.steps.indexOf(st); if (k < 1) return false; p.steps.splice(k, 1); p.steps.splice(k - 1, 0, st); });
+const stepRemove = id => editStep(id, (st, p) => { p.steps = p.steps.filter(x => x !== st); });
+
 const current = () => sheet === 'new' ? draft : find(sheet);
 function commit(p){ if (sheet !== 'new'){ touch(p); save(); } }
 function openSheet(id){ sheet = id; render(); }
@@ -630,7 +691,7 @@ function newProject(){
   return {
     id: newId(), kind: 'project', title: '', description: '', priority_order: null, target_month: null,
     effort: null, estimated_cost: null, status: 'backlog',
-    assignee_id: null, vendor_ids: [], dependency_ids: [],
+    assignee_id: null, vendor_ids: [], dependency_ids: [], steps: [],
     scheduled_start: null, scheduled_duration_minutes: null, calendar_event_id: null,
     created_at: t, updated_at: t, completed_at: null,
   };
@@ -780,7 +841,7 @@ function askDelete(id){
 // year at the bottom — read-only and without the budget, so a screenshot can
 // go to the vendor. Costs show for N.'s own review and hide for the share;
 // Copy as text turns the open work into a message (vendorText, below).
-const names = id => p => (p.vendor_ids || []).includes(id);
+const names = id => p => whoIds(p).includes(id);
 function projectCount(id){
   return countWork(state.projects.filter(p => !p.recurring_id && names(id)(p)), 'no projects');   // a job counts once, not per done time
 }
@@ -796,9 +857,16 @@ function vendorGroups(id){
     inYear: y => co.filter(p => yearOf(p.completed_at) === y),
   };
 }
+// A project's steps on a vendor's page: all of them, so the vendor sees the
+// whole job, theirs marked and the others named by who does them.
+function stepLines(p, vid){
+  const steps = stepsOf(p);
+  if (!steps.length) return '';
+  return `<span class="steps">${steps.map(st => `<span class="st ${st.vendor_id === vid ? 'mine' : ''} ${st.done ? 'done' : ''}">${st.done ? '✓' : '○'} ${esc(st.title)}${st.vendor_id === vid ? '' : ` · ${esc(st.vendor_id ? vendorName(st.vendor_id) : 'DIY')}`}</span>`).join('')}</span>`;
+}
 function renderVendorPage(v){
   const g = vendorGroups(v.id);
-  const line = p => `<div class="item ${tintOf(v.id)}"><span class="body"><span class="title">${esc(p.title)}</span>${p.effort ? `<span class="sub" style="display:block">${p.effort}</span>` : ''}</span>${showCosts ? `<span class="cost">${money(p.estimated_cost)}</span>` : ''}</div>`;
+  const line = p => `<div class="item ${tintOf(v.id)}"><span class="body"><span class="title">${esc(p.title)}</span>${p.effort ? `<span class="sub" style="display:block">${p.effort}</span>` : ''}${stepLines(p, v.id)}</span>${showCosts ? `<span class="cost">${money(p.estimated_cost)}</span>` : ''}</div>`;
   const sub = [v.category, v.phone, dateOf(nowIso())].filter(Boolean).join(' · ');
   const totals = showCosts ? `<div class="totals" id="vendor-totals"><span>open <b>${money(sumCost(g.open))}</b></span>${g.years.map(y => `<span>done ${y} <b>${money(sumCost(g.inYear(y)))}</b></span>`).join('')}</div>` : '';
   const phone = v.phone ? `<a class="pill" href="tel:${esc(v.phone.replace(/[^+\d]/g, ''))}" style="text-decoration:none;color:inherit">Call</a>` : '';
@@ -832,6 +900,7 @@ function vendorText(id){
     const when = !isTask(p) && p.target_month ? ` (${monthSpoken(p.target_month)}${every})` : '';
     const cost = showCosts && !isTask(p) && p.estimated_cost != null ? ` — ${money(p.estimated_cost)}` : '';
     out.push(`${k + 1}. ${p.title}${when}${cost}`);
+    for (const st of stepsOf(p)) if (st.vendor_id === id && !st.done) out.push(`   - ${st.title}`);   // their open steps
     for (const l of (p.description || '').split('\n').map(l => l.trim()).filter(Boolean)) out.push(`   ${l}`);
   });
   out.push('', 'Thanks!');
@@ -993,6 +1062,11 @@ $('sheet').addEventListener('change', e => {
   if (e.target.id === 's-notes') setNotes();
   if (e.target.id === 's-month'){ const p = current(); const ym = e.target.value || null; if (p && (p.target_month || null) !== ym){ p.target_month = ym; commit(p); render(); } }
   if (e.target.id === 's-vendor') linkVendor(e.target.value);
+  const d = e.target.dataset;
+  if (d.steptick) stepTick(d.steptick, e.target.checked);
+  if (d.steptitle) stepTitle(d.steptitle, e.target.value);
+  if (d.stepvendor) stepVendor(d.stepvendor, e.target.value);
+  if (e.target.id === 's-newstep') addStep(e.target.value);
 });
 // A new project's title follows the typing, so picking a month or a vendor
 // (which re-renders the sheet) never drops it.
@@ -1013,6 +1087,8 @@ document.addEventListener('click', e => {
   if (e.target.id === 'vs-delete'){ if (askDeleteVendor(vsheet)) closeSheet(); return; }
   const proj = e.target.closest('[data-project]'); if (proj){ openSheet(proj.dataset.project); return; }
   const kind = e.target.closest('[data-kind]');    if (kind){ setKind(kind.dataset.kind); return; }
+  const su = e.target.closest('[data-stepup]');    if (su){ stepUp(su.dataset.stepup); return; }
+  const sd = e.target.closest('[data-stepdel]');   if (sd){ stepRemove(sd.dataset.stepdel); return; }
   const rm = e.target.closest('[data-rmonth]');    if (rm){ toggleMonth(Number(rm.dataset.rmonth)); return; }
   const eff = e.target.closest('[data-eff]');      if (eff){ const p = current(); if (!isOpen(p)) return; p.effort = eff.dataset.eff || null; commit(p); render(); return; }
   const un = e.target.closest('[data-unlink]');    if (un){ unlinkVendor(un.dataset.unlink); return; }

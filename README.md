@@ -46,6 +46,16 @@ Four places at the bottom: **Plan · Vendors · Budget · Done** (D9b-1).
    when it was last done. Undo, or Reopen on that time's sheet, takes the
    time back and returns the job to its month — only for the latest time,
    and only while the job is where that time put it; older times stay.
+   **Steps** (D12): a project's sheet has a Steps list — an ordered
+   checklist, each step a title, who does it (a vendor or DIY) and a tick;
+   steps are added in the field at its end, retitled in place (empty keeps
+   the old title), moved up with ↑ and removed with ×. Cost, size and month
+   stay on the project: one too big for that is several projects. Who
+   works on a project is its own vendors and every step's vendor — its row
+   names them all and counts "2/3 steps". When every step is ticked the
+   sheet offers Mark done; a project is never done by itself. Tasks and
+   recurring jobs have no steps; a project turned into one keeps its steps
+   hidden, naming no one.
 2. **Plan is the one list** of open projects, and the **target month** is the
    priority, not position. It is grouped against today — **this month** (a
    month already past stays here, overdue) · **next month** · **next
@@ -85,7 +95,8 @@ Four places at the bottom: **Plan · Vendors · Budget · Done** (D9b-1).
    one quiet line (category · phone) with a mark in the vendor's tint.
    Tapping a vendor opens its sheet: every field edits there (an empty name
    keeps the old one), Call / Email / Website use the details, Delete
-   removes it — a vendor a project still names cannot be deleted.
+   removes it — a vendor a project, task or step still names cannot be
+   deleted.
    **Projects name vendors** by id — zero, one or several; none
    means DIY. In a project's sheet, the vendor list adds one (or "+ New
    vendor…", which asks for a name and creates it) and tapping a vendor's
@@ -93,12 +104,14 @@ Four places at the bottom: **Plan · Vendors · Budget · Done** (D9b-1).
    the **vendor page**: open work grouped by month, Done collapsed by year —
    read-only and without the budget, so a screenshot can go to the vendor.
    Open tasks come first on the page, under **Tasks**; done tasks sit in
-   Done below the year's projects.
+   Done below the year's projects. A project with steps shows **whole** on
+   the page of every vendor with a step in it: all its steps, the vendor's
+   own in bold, the others named by who does them.
    The costs toggle hides costs and totals for that screenshot; Copy as
    text gives a message to paste to the vendor as it is — a greeting, the
    open jobs numbered (tasks first, without month or cost) with their
-   month — a recurring job adds its rhythm, "(October, every year)" — and
-   notes, a sign-off; costs only
+   month — a recurring job adds its rhythm, "(October, every year)" — that
+   vendor's open steps as "- " lines under a project, and notes, a sign-off; costs only
    while shown, done work never. The list can also be **imported** from
    JSON on the Vendors view (a file or pasted text): a bare list, the app's
    own `vendors`, or the household seed's `contacts` — extra fields fold
@@ -111,7 +124,8 @@ Four places at the bottom: **Plan · Vendors · Budget · Done** (D9b-1).
    currency } }`. `kind` is `'task'`, `'project'` or `'recurring'` (D10,
    D11; records without one gain `'project'` on load). A recurring job
    carries `recur_months` (1–12); a done time carries `recurring_id`, its
-   own month in `target_month` and the job's next one in `next_month`. Every project carries the spec's §4 fields from day one,
+   own month in `target_month` and the job's next one in `next_month`. A
+   project's `steps` are `{ id, title, vendor_id, done }` (D12). Every project carries the spec's §4 fields from day one,
    the unused ones empty (`dependency_ids`, `scheduled_*`,
    `calendar_event_id`), and `target_month` (`YYYY-MM` or null, D7 —
    records written before it gain it as null on load), so later stories

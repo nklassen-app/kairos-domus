@@ -1046,3 +1046,93 @@ test('the vendor page and the copied text carry recurring jobs with their rhythm
     'Thanks!', '',
   ].join('\n'));
 });
+
+/* ---- D12: steps on projects ---- */
+
+const STEP_DOC = () => docV(
+  [vendor({ id: 'sand', name: 'Sanders Co' }), vendor({ id: 'paint', name: 'Bright Painters' })],
+  [project({ id: 'st', title: 'Redo the stairs', target_month: '2026-10', estimated_cost: 1500, effort: 'L', steps: [
+    { id: 's1', title: 'Sand the treads', vendor_id: 'sand', done: false },
+    { id: 's2', title: 'Paint the risers', vendor_id: 'paint', done: false },
+    { id: 's3', title: 'Pick the colour', vendor_id: null, done: true },
+  ] })]);
+const stepTitles = h => h.$$('#s-steps [data-steptitle]').map(e => e.value);
+
+test('steps are added, retitled, given a vendor, moved up and removed in the sheet; a project without steps shows none', () => {
+  const h = boot({ seed: { [KEY]: docV([vendor({ id: 'sand', name: 'Sanders Co' })], [project({ id: 'p', title: 'Playhouse' })]) } });
+  h.open('p');
+  assert.deepEqual(stepTitles(h), []);
+  h.set('s-newstep', 'New roof');
+  h.set('s-newstep', 'Paint walls');
+  h.set('s-newstep', '   ');
+  assert.deepEqual(stepTitles(h), ['New roof', 'Paint walls'], 'an empty step adds nothing');
+  let steps = h.stored().projects[0].steps;
+  assert.deepEqual(steps.map(s => [s.title, s.vendor_id, s.done]), [['New roof', null, false], ['Paint walls', null, false]]);
+  const [a, b] = steps.map(s => s.id);
+  const sel = h.$(`[data-stepvendor="${a}"]`); sel.value = 'sand'; sel.dispatchEvent(new h.w.Event('change', { bubbles: true }));
+  const tt = h.$(`[data-steptitle="${b}"]`); tt.value = 'Paint the walls'; tt.dispatchEvent(new h.w.Event('change', { bubbles: true }));
+  const t2 = h.$(`[data-steptitle="${b}"]`); t2.value = ''; t2.dispatchEvent(new h.w.Event('change', { bubbles: true }));
+  h.click(`[data-stepup="${b}"]`);
+  assert.equal(h.$(`[data-stepup="${b}"]`), null, 'the first step has no up');
+  steps = h.stored().projects[0].steps;
+  assert.deepEqual(steps.map(s => [s.title, s.vendor_id]), [['Paint the walls', null], ['New roof', 'sand']], 'empty title kept the old one');
+  h.click(`[data-stepdel="${a}"]`);
+  assert.deepEqual(h.stored().projects[0].steps.map(s => s.title), ['Paint the walls']);
+  assert.equal(h.$('#s-month') !== null && h.$('#s-cost') !== null, true, 'cost and month stay on the project');
+});
+
+test('the card names everyone on the project and its step count; the project counts for each step vendor', () => {
+  const h = boot({ seed: { [KEY]: STEP_DOC() } });
+  assert.equal(h.$('#plan [data-project="st"] .sub').textContent, 'Sanders Co, Bright Painters · L · 1/3 steps');
+  h.click('#tab-vendors');
+  assert.deepEqual(pageText(h, '#vendors .count'), ['1 project', '1 project']);
+  assert.equal(h.w.askDeleteVendor('paint'), false, 'a step names it');
+});
+
+test('ticking the last step offers Mark done, but the project stays open until marked', () => {
+  const h = boot({ seed: { [KEY]: STEP_DOC() } });
+  h.open('st');
+  assert.equal(h.$('.stepshead .sum').textContent, '1 of 3 done');
+  assert.equal(h.$('#s-alldone'), null);
+  for (const id of ['s1', 's2']){ const c = h.$(`[data-steptick="${id}"]`); c.checked = true; c.dispatchEvent(new h.w.Event('change', { bubbles: true })); }
+  assert.equal(h.$('#s-alldone').textContent, 'All steps done — mark the project done?');
+  assert.equal(h.stored().projects[0].status, 'backlog', 'never done by itself');
+  const c = h.$('[data-steptick="s1"]'); c.checked = false; c.dispatchEvent(new h.w.Event('change', { bubbles: true }));
+  assert.equal(h.$('#s-alldone'), null);
+  assert.equal(h.stored().projects[0].steps[0].done, false);
+});
+
+test('a project shows whole on each step vendor\'s page, theirs marked; the copied text lists their open steps under it', async () => {
+  const h = boot({ seed: { [KEY]: STEP_DOC() } });
+  let copied = null;
+  Object.defineProperty(h.w.navigator, 'clipboard', { value: { writeText: x => { copied = x; return Promise.resolve(); } }, configurable: true });
+  h.click('#tab-vendors'); openPage(h, 'paint');
+  assert.deepEqual(pageText(h, '#vendor-page .title'), ['Redo the stairs']);
+  assert.deepEqual(pageText(h, '#vendor-page .steps .st'), ['○ Sand the treads · Sanders Co', '○ Paint the risers', '✓ Pick the colour · DIY']);
+  assert.deepEqual(pageText(h, '#vendor-page .steps .st.mine'), ['○ Paint the risers']);
+  h.click('#vendor-copy');
+  await new Promise(r => setTimeout(r, 0));
+  assert.equal(copied, [
+    'Hi, here are the jobs I have for you:', '',
+    '1. Redo the stairs (October) — $1,500',
+    '   - Paint the risers', '',
+    'Thanks!', '',
+  ].join('\n'));
+});
+
+test('a done project shows its steps read-only; a project turned task hides its steps but keeps them', () => {
+  const d = STEP_DOC();
+  d.projects[0].status = 'completed'; d.projects[0].completed_at = '2026-09-10T10:00:00.000Z';
+  const h = boot({ seed: { [KEY]: d } });
+  h.click('#tab-done'); h.open('st');
+  assert.equal(h.$('[data-steptick="s1"]').disabled, true);
+  assert.equal(h.$('#s-newstep'), null);
+  assert.equal(h.$('[data-stepdel="s1"]'), null);
+  h.click('#s-reopen');
+  h.open('st'); h.click('#s-kind [data-kind="task"]');
+  assert.equal(h.$('#s-steps'), null);
+  assert.equal(h.stored().projects[0].steps.length, 3);
+  h.click('#s-close');
+  h.click('#tab-vendors');
+  assert.deepEqual(pageText(h, '#vendors .count'), ['no projects', 'no projects'], 'hidden steps name no one');
+});
