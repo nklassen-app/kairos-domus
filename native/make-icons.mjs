@@ -1,24 +1,17 @@
-// Rasterize ../icon.svg into the source PNGs @capacitor/assets expects.
-// Foreground shapes are scaled to 60% so nothing falls outside the adaptive-
-// icon safe zone (central 66/108) under circular masks.
+// Rasterize the SVG masters into the 1024px PNGs @capacitor/assets expects.
+// ../icon.svg is the full icon (also the web/PWA icon); assets/icon-foreground.svg
+// and assets/icon-background.svg are the two adaptive-icon layers, drawn on a
+// 108-unit canvas with the glyph already inside the safe zone (central 66/108),
+// so they are rendered 1:1 — no rescaling here.
 import sharp from 'sharp';
 import { readFileSync, mkdirSync } from 'fs';
 
-const svg = readFileSync(new URL('../icon.svg', import.meta.url));
-mkdirSync('assets', { recursive: true });   // the PNGs are ignored, so a fresh clone has no assets/ yet
+const read = p => readFileSync(new URL(p, import.meta.url));
+mkdirSync('assets', { recursive: true });   // the PNGs are ignored; the SVG masters are tracked
 
-// Full-bleed icon for legacy launchers.
-await sharp(svg).resize(1024, 1024).png().toFile('assets/icon-only.png');
-
-// Solid background layer.
-await sharp({
-  create: { width: 1024, height: 1024, channels: 4, background: '#f6f7f5' },
-}).png().toFile('assets/icon-background.png');
-
-// Foreground layer: shapes centered at 60% on transparency.
-const fg = await sharp(svg).resize(614, 614).png().toBuffer();
-await sharp({
-  create: { width: 1024, height: 1024, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } },
-}).composite([{ input: fg, gravity: 'centre' }]).png().toFile('assets/icon-foreground.png');
+const render = (svg, out) => sharp(svg, { density: 300 }).resize(1024, 1024).png().toFile(out);
+await render(read('../icon.svg'), 'assets/icon-only.png');                       // legacy launchers
+await render(read('./assets/icon-background.svg'), 'assets/icon-background.png');
+await render(read('./assets/icon-foreground.svg'), 'assets/icon-foreground.png');
 
 console.log('icon sources written to assets/');
