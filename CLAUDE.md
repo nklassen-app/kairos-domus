@@ -41,6 +41,7 @@ This system is deliberately biased toward creative velocity and tolerates mess. 
 ## Session start — the glance
 - **Before touching any file, run `kairos-foundation/scripts/kairos_status.sh`.** It fetches first (P12), so on a device with a live `ssh-agent` this is how another device's push — the phone and the Chromebook working in parallel — shows up as "behind" before you commit on top of it, not after a rejected push. If it shows "behind" on a repo you're about to touch, pull/merge first.
 - Applies the same way on every device — the Chromebook, the phone, any future host. No exception for "just a quick change."
+- **The dashboard** (issue `nklassen-app/kairos_v3#11`, pinned; N. ticks it on the phone). When `kairos_v3` is on this device and the GitHub tools are reachable: **at session start**, after the glance, save the issue body to the scratchpad and run `kairos-foundation/scripts/dashboard.py --apply-ticks <file>` — N.'s ticks become ☑ in the backlog, committed with the session's work. **At session end**, after the last backlog change, write the output of `dashboard.py` to the issue body. The issue is never edited by hand except N.'s ticks.
 
 ## When to stop and ask
 - Anything that would move real data into a tracked path, weaken an ignore rule, or cross the privacy boundary.
