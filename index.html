@@ -237,7 +237,7 @@
 <div class="sheet" id="sheet" role="dialog" aria-modal="true" aria-label="Project" hidden></div>
 
 <!-- Keep in step with CACHE in sw.js — the visible proof of which build is running. -->
-<span class="ver">domus-v16</span>
+<span class="ver">domus-v17</span>
 
 <script>
 // State: one JSON document in localStorage, on one device. No backup, no sync.
@@ -450,17 +450,16 @@ function row(p, { month = false, date = false } = {}){
 }
 
 // A task is a slim row, not a card: the vendor's mark, the title, who —
-// nothing to cost or schedule. `tag` 'div' makes it read-only and drops the
-// who line (the vendor page, where it would only repeat the vendor).
-function taskRow(p, { date = false, tag = 'button' } = {}){
+// nothing to cost or schedule. Tapping it opens the sheet. `who: false`
+// drops the who line (the vendor page, where it would only repeat the vendor).
+function taskRow(p, { date = false, who = true } = {}){
   const ids = p.vendor_ids || [];
   const bits = [ids.length ? ids.map(vendorName).join(', ') : 'Unassigned'];
   if (date && p.completed_at) bits.push(dateOf(p.completed_at));
-  const attrs = tag === 'button' ? ` data-project="${p.id}" type="button"` : '';
-  return `<${tag} class="item task"${attrs}>
+  return `<button class="item task" data-project="${p.id}" type="button">
       <span class="mark ${tintOf(ids[0])}"></span>
-      <span class="body"><span class="title">${esc(p.title)}</span>${tag === 'button' ? `<span class="sub" style="display:block">${esc(bits.join(' · '))}</span>` : ''}</span>
-    </${tag}>`;
+      <span class="body"><span class="title">${esc(p.title)}</span>${who ? `<span class="sub" style="display:block">${esc(bits.join(' · '))}</span>` : ''}</span>
+    </button>`;
 }
 const taskList = (items, opts) => `<div class="list tasks">${items.map(p => taskRow(p, opts)).join('')}</div>`;
 
@@ -807,12 +806,12 @@ function reopen(id){
     const job = find(p.recurring_id);
     job.target_month = p.target_month; touch(job);
     state.projects = state.projects.filter(q => q.id !== p.id);
-    save(); sheet = null; draft = null; view = 'plan'; render();
+    save(); sheet = null; draft = null; if (view !== 'vendor') view = 'plan'; render();
     toast(`Back in Plan: ${job.title}`, null);
     return;
   }
   p.status = 'backlog'; p.completed_at = null; touch(p);
-  save(); sheet = null; draft = null; view = 'plan'; render();
+  save(); sheet = null; draft = null; if (view !== 'vendor') view = 'plan'; render();   // a vendor's page stays put (Domus projects 13)
   toast(`Back in Plan: ${p.title}`, null);
 }
 let toastTimer = null, toastUndo = null;
@@ -838,8 +837,9 @@ function askDelete(id){
 /* ---- the vendor page: everything that names one vendor ---- */
 
 // Open projects grouped by target month (no month last), Done collapsed by
-// year at the bottom — read-only and without the budget, so a screenshot can
-// go to the vendor. Costs show for N.'s own review and hide for the share;
+// year at the bottom — without the budget, so a screenshot can go to the
+// vendor. Tapping a row opens its sheet over the page (Domus projects 13); closing it
+// stays on the page. Costs show for N.'s own review and hide for the share;
 // Copy as text turns the open work into a message (vendorText, below).
 const names = id => p => whoIds(p).includes(id);
 function projectCount(id){
@@ -866,7 +866,7 @@ function stepLines(p, vid){
 }
 function renderVendorPage(v){
   const g = vendorGroups(v.id);
-  const line = p => `<div class="item ${tintOf(v.id)}"><span class="body"><span class="title">${esc(p.title)}</span>${p.effort ? `<span class="sub" style="display:block">${p.effort}</span>` : ''}${stepLines(p, v.id)}</span>${showCosts ? `<span class="cost">${money(p.estimated_cost)}</span>` : ''}</div>`;
+  const line = p => `<button class="item ${tintOf(v.id)}" data-project="${p.id}" type="button"><span class="body"><span class="title">${esc(p.title)}</span>${p.effort ? `<span class="sub" style="display:block">${p.effort}</span>` : ''}${stepLines(p, v.id)}</span>${showCosts ? `<span class="cost">${money(p.estimated_cost)}</span>` : ''}</button>`;
   const sub = [v.category, v.phone, dateOf(nowIso())].filter(Boolean).join(' · ');
   const totals = showCosts ? `<div class="totals" id="vendor-totals"><span>open <b>${money(sumCost(g.open))}</b></span>${g.years.map(y => `<span>done ${y} <b>${money(sumCost(g.inYear(y)))}</b></span>`).join('')}</div>` : '';
   const phone = v.phone ? `<a class="pill" href="tel:${esc(v.phone.replace(/[^+\d]/g, ''))}" style="text-decoration:none;color:inherit">Call</a>` : '';
@@ -874,11 +874,11 @@ function renderVendorPage(v){
     <h1>${esc(v.name)}</h1>
     <div class="vsub">${esc(sub)}</div>
     <div class="vtools"><button class="pill pri" id="vendor-copy" type="button">Copy as text</button>${phone}<button class="pill" id="vendor-costs" type="button" aria-pressed="${showCosts}">Costs: ${showCosts ? 'on' : 'off'}</button></div>
-    ${g.tasks.length ? `<div class="sec"><div class="sechead"><h2>Tasks</h2><span class="sum">${g.tasks.length}</span></div>${taskList(g.tasks, { tag: 'div' })}</div>` : ''}
+    ${g.tasks.length ? `<div class="sec"><div class="sechead"><h2>Tasks</h2><span class="sum">${g.tasks.length}</span></div>${taskList(g.tasks, { who: false })}</div>` : ''}
     ${g.tasks.length || g.months.length ? g.months.map(m => `<div class="sec"><div class="sechead"><h2>${m.label}</h2><span class="sum">${showCosts ? money(sumCost(m.items)) : ''}</span></div><div class="list cards">${m.items.map(line).join('')}</div></div>`).join('')
       : '<div class="sec"><div class="board-empty">Nothing open.</div></div>'}
     <details id="vendor-completed" class="sec" ${completedOpen ? 'open' : ''}><summary><div class="sechead"><h2>Done · ${g.co.length}</h2></div></summary>
-      ${g.co.length ? g.years.map(y => `<h3>${y}</h3>${doneBlock(g.inYear(y), line, () => taskList(g.inYear(y).filter(isTask), { tag: 'div' }))}`).join('') : '<div class="board-empty">Nothing done yet.</div>'}
+      ${g.co.length ? g.years.map(y => `<h3>${y}</h3>${doneBlock(g.inYear(y), line, () => taskList(g.inYear(y).filter(isTask), { who: false }))}`).join('') : '<div class="board-empty">Nothing done yet.</div>'}
     </details>
     ${totals}`;
 }
