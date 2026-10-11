@@ -105,7 +105,10 @@ Four places at the bottom: **Plan · Vendors · Budget · Done** (D9b-1).
    vendor…", which asks for a name and creates it) and tapping a vendor's
    chip removes it. The "Page · N projects" button in a vendor's sheet opens
    the **vendor page**: open work grouped by month, Done collapsed by year —
-   read-only and without the budget, so a screenshot can go to the vendor.
+   without the budget, so a screenshot can go to the vendor. Tapping a task
+   or project there opens its sheet over the page — edit it, add a step,
+   mark it done or reopen it — and closing the sheet stays on the page
+   (Domus projects 13).
    Open tasks come first on the page, under **Tasks**; done tasks sit in
    Done below the year's projects. A project with steps shows **whole** on
    the page of every vendor with a step in it: all its steps, the vendor's
