@@ -705,7 +705,7 @@ const PAGE_DOC = () => docV(
   ]);
 const pageText = (h, sel) => [...h.w.document.querySelectorAll(sel)].map(e => e.textContent.trim());
 
-test('a vendor opens its page: open work by month, done collapsed by year, nothing to tap on the list; back returns', () => {
+test('a vendor opens its page: open work by month, done collapsed by year, every row tappable; back returns', () => {
   const h = boot({ seed: { [KEY]: PAGE_DOC() } });
   h.click('#tab-vendors');
   assert.deepEqual(pageText(h, '#vendors .count'), ['5 projects', 'no projects']);
@@ -721,7 +721,7 @@ test('a vendor opens its page: open work by month, done collapsed by year, nothi
   assert.deepEqual(pageText(h, '#vendor-page .title'), ['Panel upgrade', 'Outlet in garage', 'Porch light', 'Fan install', 'Old rewiring']);
   assert.equal(h.$('#vendor-completed').open, false);
   assert.deepEqual(pageText(h, '#vendor-totals span'), ['open $2,550', 'done 2026 $300', 'done 2025 $1,000']);
-  assert.equal(h.$('#vendor-page [data-project]'), null, 'the page is read-only');
+  assert.deepEqual(h.$$('#vendor-page [data-project]').map(e => e.dataset.project), ['a', 'b', 'b2', 'c', 'd'], 'every row opens its sheet (Domus projects 13)');
   h.click('#vendor-back');
   assert.equal(h.$('#view-vendors').hidden, false);
   openPage(h, 'idle');
@@ -903,8 +903,40 @@ test('the vendor page shows open tasks above the months, done tasks in Done; cou
   openPage(h, 'ace');
   assert.deepEqual(pageText(h, '#vendor-page .sechead h2'), ['Tasks', 'October 2026', 'Done · 1']);
   assert.deepEqual(pageText(h, '#vendor-page .title'), ['Fix the door lock', 'Sand the stairs', 'Oil the gate']);
-  assert.equal(h.$('#vendor-page [data-project]'), null, 'still read-only');
+  assert.deepEqual(h.$$('#vendor-page [data-project]').map(e => e.dataset.project), ['lock', 'stairs', 'gate'], 'tasks too (Domus projects 13)');
   assert.deepEqual(pageText(h, '#vendor-totals span'), ['open $900', 'done 2026 $0']);
+});
+
+test('from a vendor\'s page a task or project opens its sheet; an edit shows everywhere; the page stays put (Domus projects 13)', () => {
+  const h = boot({ seed: { [KEY]: KIND_DOC() } });
+  h.click('#tab-vendors');
+  openPage(h, 'ace');
+  const onPage = () => !h.$('#view-vendor').hidden && h.$('#view-plan').hidden;
+  // a task: open, rename, close — still on the page, and Plan has the new name
+  h.click('#vendor-page [data-project="lock"]');
+  assert.ok(h.sheetOpen(), 'the task opens its sheet');
+  assert.equal(h.$('#s-title').value, 'Fix the door lock');
+  assert.ok(onPage(), 'the sheet opens over the page');
+  h.set('s-title', 'Fix both door locks');
+  h.click('#s-close');
+  assert.ok(!h.sheetOpen() && onPage(), 'closing stays on the page');
+  assert.ok(pageText(h, '#vendor-page .title').includes('Fix both door locks'));
+  assert.ok(h.titles('plan').includes('Fix both door locks'), 'the edit shows on Plan');
+  // a project: add a step from the page; the page shows it
+  h.click('#vendor-page [data-project="stairs"]');
+  const f = h.$('#s-newstep'); f.value = 'Buy sandpaper';
+  f.dispatchEvent(new h.w.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+  h.click('#s-close');
+  assert.ok(pageText(h, '#vendor-page .steps').some(t => t.includes('Buy sandpaper')));
+  // mark done from the page, then reopen from the page's Done — both stay
+  h.click('#vendor-page [data-project="lock"]');
+  h.click('#s-done');
+  assert.ok(onPage(), 'Mark done stays on the page');
+  assert.equal(h.stored().projects.find(p => p.id === 'lock').status, 'completed');
+  h.click('#vendor-page [data-project="lock"]');
+  h.click('#s-reopen');
+  assert.ok(onPage(), 'Reopen stays on the page');
+  assert.equal(h.stored().projects.find(p => p.id === 'lock').status, 'backlog');
 });
 
 test('Copy as text lists the tasks first, without month or cost, then the projects', async () => {

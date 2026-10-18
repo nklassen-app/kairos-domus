@@ -1,4 +1,4 @@
-const CACHE = 'domus-v17';   // new icon   // bump on EVERY content change, and the .ver marker in index.html with it
+const CACHE = 'domus-v18';   // merge: new icon + edit from the vendor page   // bump on EVERY content change, and the .ver marker in index.html with it
 const ASSETS = ['.', 'index.html', 'manifest.webmanifest', 'icon.svg'];
 
 self.addEventListener('install', e => {
