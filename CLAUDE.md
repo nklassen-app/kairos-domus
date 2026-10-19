@@ -39,6 +39,7 @@ This system is deliberately biased toward creative velocity and tolerates mess. 
 - Commit **code, schema, and migrations** — not runtime state (DBs, caches, generated files).
 - **Audit before the first push** of any repo: run `git ls-files` and confirm nothing sensitive is tracked. Ignore before push, never after.
 - **Audit before every push:** `kairos-foundation/scripts/audit_push.sh` (installed as the repo's `pre-push` hook) checks the canonical block, refuses the hard net, and lists every file the push sends — N. content-reads that list by hand. A push to a public repo is never sent unread.
+- **A PR Claude opens is watched until it is merged or closed.** Right after opening one, subscribe to its activity (review comments, CI) and act on each event: fix what is asked, answer what isn't, and say once when it waits only on N.'s merge. Stop when N. says so. Opening a PR stays N.'s call, never Claude's own.
 - A pushed secret is a **burned secret** — rotate it, don't just delete the file.
 - All repos **private** by default. **Public only by the Charter Part 7 exception**, and only where the Registry's Repo column says so: Tier ≤ 1, data only in the viewer's own browser, no secret, no outbound call beyond loading its own page. Sensitive or personal-strategy content is never public. Making a repo public is N.'s decision, never Claude's.
 
