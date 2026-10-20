@@ -136,6 +136,15 @@ Four places at the bottom: **Plan · Vendors · Budget · Done** (D9b-1).
    `calendar_event_id`), and `target_month` (`YYYY-MM` or null, D7 —
    records written before it gain it as null on load), so later stories
    add to the record without restructuring it. No backup, no sync.
+9. **Export for agent** (Agent design 4), on Plan, opens a sheet headed
+   *This is what leaves the phone* with one JSON document, and **Copy**.
+   It is the app's one door: `agentExport()` builds it from an
+   allow-list — the open work (title, kind, month, size, vendor names,
+   steps with who and tick, a recurring job's months). Never in it: costs
+   and the budget (the agent does admin, not money — N., 2026-10-20), a
+   vendor's phone, email, website or notes, the notes on the work, ids,
+   timestamps, done work. No network call; N. pastes it by hand. The
+   tests pin the allow-list.
 
 ## Run locally
 

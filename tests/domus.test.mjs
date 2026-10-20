@@ -1168,3 +1168,76 @@ test('a done project shows its steps read-only; a project turned task hides its 
   h.click('#tab-vendors');
   assert.deepEqual(pageText(h, '#vendors .count'), ['no projects', 'no projects'], 'hidden steps name no one');
 });
+
+/* ---- Export for agent (Agent design 4) ---- */
+
+// A document with every field the export must keep out planted in it.
+const EXPORT_DOC = () => ({
+  ...doc([
+    project({ id: 'tk', kind: 'task', title: 'Fix the door', vendor_ids: ['ace'], target_month: '2026-10', effort: 'M', estimated_cost: 999, description: 'SECRET-NOTE task' }),
+    project({ id: 'pr', kind: 'project', title: 'Panel upgrade', vendor_ids: ['ace'], target_month: '2026-10', effort: 'L', estimated_cost: 2400, description: 'SECRET-NOTE project',
+      steps: [{ id: 'st1', title: 'Permit', vendor_id: null, done: true }, { id: 'st2', title: 'Swap panel', vendor_id: 'bolt', done: false }] }),
+    project({ id: 'rc', kind: 'recurring', title: 'Gutters', vendor_ids: ['bolt'], recur_months: [11, 4], target_month: '2026-11', effort: 'S', estimated_cost: 200 }),
+    project({ id: 'nm', title: 'Attic hatch' }),
+    project({ id: 'dn', title: 'Old roof job', vendor_ids: ['bolt'], target_month: '2026-06', estimated_cost: 500, status: 'completed', completed_at: '2026-06-10T10:00:00.000Z' }),
+  ], { year: 2026, amount: 9000, currency: 'USD' }),
+  vendors: [
+    { id: 'ace', name: 'Ace Electric', category: 'Electrician', phone: '555-0199', email: 'ace@example.com', website: 'ace.example.com', notes: 'SECRET-VENDOR-NOTE' },
+    { id: 'bolt', name: 'Bolt Roofing', category: 'Roof', phone: '555-0177', email: 'bolt@example.com', website: '', notes: '' },
+  ],
+});
+function exportDoc(h){
+  h.click('#export');
+  return JSON.parse(h.$('#export-doc').textContent);
+}
+
+test('Export for agent shows, before anything is copied, the open work from the allow-list', () => {
+  const h = boot({ seed: { [KEY]: EXPORT_DOC() } });
+  const x = exportDoc(h);
+  assert.ok(h.sheetOpen(), 'the sheet is open');
+  assert.match(h.$('#sheet').textContent, /This is what leaves the phone/);
+  assert.equal(x.app, 'domus');
+  assert.equal(x.exported, '2026-09-19');
+  assert.deepEqual(x.work.map(w => w.title), ['Fix the door', 'Panel upgrade', 'Gutters', 'Attic hatch'], 'tasks first, then by month; done work absent');
+  assert.deepEqual(x.work[0], { title: 'Fix the door', kind: 'task', vendors: ['Ace Electric'] }, 'a task carries no month or size, even hidden ones');
+  assert.deepEqual(x.work[1], { title: 'Panel upgrade', kind: 'project', month: '2026-10', size: 'L', vendors: ['Ace Electric'],
+    steps: [{ title: 'Permit', vendor: null, done: true }, { title: 'Swap panel', vendor: 'Bolt Roofing', done: false }] });
+  assert.deepEqual(x.work[2], { title: 'Gutters', kind: 'recurring', month: '2026-11', size: 'S', months_of_year: ['April', 'November'], vendors: ['Bolt Roofing'] });
+  assert.deepEqual(x.work[3], { title: 'Attic hatch', kind: 'project', month: null, size: null, vendors: [] });
+  assert.deepEqual(Object.keys(x).sort(), ['about', 'app', 'exported', 'work']);
+});
+
+test('the export never carries a cost, the budget, a vendor\'s phone, email, website or notes, the notes on the work, ids or timestamps', () => {
+  const h = boot({ seed: { [KEY]: EXPORT_DOC() } });
+  h.click('#export');
+  const text = h.$('#export-doc').textContent;
+  for (const s of ['555-01', 'example.com', 'SECRET-', 'Electrician', '"id"', '_id', 'created_at', 'updated_at', 'completed_at', 'T10:00', 'status', 'description', 'Old roof job', 'cost', 'budget', '$', '2400', '9000', '200,', 'USD'])
+    assert.ok(!text.includes(s), `"${s}" is not in the export`);
+  for (const id of ['tk', 'pr', 'rc', 'nm', 'dn', 'ace', 'bolt', 'st1', 'st2'])
+    assert.doesNotMatch(text, new RegExp(`"${id}"`), `id ${id} is not in the export`);
+});
+
+test('Copy puts exactly the shown document on the clipboard; Close and Escape close the sheet; nothing is stored', async () => {
+  const seed = EXPORT_DOC();
+  const h = boot({ seed: { [KEY]: seed } });
+  let copied = null;
+  Object.defineProperty(h.w.navigator, 'clipboard', { value: { writeText: t => { copied = t; return Promise.resolve(); } }, configurable: true });
+  h.click('#export');
+  const shown = h.$('#export-doc').textContent;
+  assert.equal(copied, null, 'nothing is copied by opening the sheet');
+  h.click('#export-copy');
+  await new Promise(r => setTimeout(r, 0));
+  assert.equal(copied, shown);
+  assert.equal(h.$('#status').textContent, 'Copied.');
+  h.click('#s-close');
+  assert.ok(!h.sheetOpen());
+  h.click('#export');
+  h.w.document.dispatchEvent(new h.w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  assert.ok(!h.sheetOpen());
+  assert.deepEqual(h.stored(), seed, 'the export changes nothing stored');
+});
+
+test('an empty Domus exports an empty work list', () => {
+  const h = boot();
+  assert.deepEqual(exportDoc(h).work, []);
+});
