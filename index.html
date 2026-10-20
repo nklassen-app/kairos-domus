@@ -174,6 +174,8 @@
   .sheet select[disabled]{appearance:none;-webkit-appearance:none;}
   .sheet .vchip[disabled]::after{content:'';}
   .status{font-size:13px;color:var(--muted);margin:12px 4px 0;min-height:1em;}
+  /* Export for agent (Agent design 4): the document shown before it is copied */
+  .xdoc{font:12.5px/1.45 ui-monospace,Menlo,Consolas,monospace;background:var(--panel);border-radius:14px;padding:12px 14px;margin:0;white-space:pre-wrap;word-break:break-word;max-height:52vh;overflow:auto;}
   .ver{position:fixed;right:10px;top:6px;font-size:11px;color:var(--muted);opacity:.6;}
   :focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
   [hidden]{display:none !important;}
@@ -183,6 +185,7 @@
 <div class="wrap">
   <section id="view-plan" aria-label="Plan">
     <div class="top"><h1>Plan</h1><span class="aside" id="plan-aside"></span></div>
+    <div class="vtools"><button class="pill" id="export" type="button">Export for agent</button></div>
     <div id="plan"></div>
   </section>
 
@@ -237,7 +240,7 @@
 <div class="sheet" id="sheet" role="dialog" aria-modal="true" aria-label="Project" hidden></div>
 
 <!-- Keep in step with CACHE in sw.js — the visible proof of which build is running. -->
-<span class="ver">domus-v18</span>
+<span class="ver">domus-v19</span>
 
 <script>
 // State: one JSON document in localStorage, on one device. No backup, no sync.
@@ -283,6 +286,7 @@ let completedOpen = false;   // the vendor page's Done group, collapsed by defau
 let sheet = null;        // null, a project id, or 'new' while the sheet is open
 let draft = null;        // the project being added while sheet === 'new'
 let vsheet = null;       // the vendor whose sheet is open (D9b-2b); never at once with `sheet`
+let xsheet = false;      // the Export for agent sheet is open (Agent design 4); never at once with the others
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -606,6 +610,7 @@ function setVendorField(f, value){
   v[f] = text; v.updated_at = nowIso(); save(); render();
 }
 function renderSheet(){
+  if (xsheet){ $('sheet').hidden = $('dim').hidden = false; renderExportSheet(); return; }
   const v = vsheet ? findVendor(vsheet) : null;
   if (vsheet && !v) vsheet = null;
   const p = v ? null : sheet === 'new' ? draft : sheet ? find(sheet) : null;
@@ -684,7 +689,7 @@ const stepRemove = id => editStep(id, (st, p) => { p.steps = p.steps.filter(x =>
 const current = () => sheet === 'new' ? draft : find(sheet);
 function commit(p){ if (sheet !== 'new'){ touch(p); save(); } }
 function openSheet(id){ sheet = id; render(); }
-function closeSheet(){ sheet = null; draft = null; vsheet = null; render(); }
+function closeSheet(){ sheet = null; draft = null; vsheet = null; xsheet = false; render(); }
 function newProject(){
   const t = nowIso();
   return {
@@ -906,14 +911,57 @@ function vendorText(id){
   out.push('', 'Thanks!');
   return out.join('\n') + '\n';
 }
-function copyVendor(){
-  const text = vendorText(openVendor);
+const copyVendor = () => copyText(vendorText(openVendor));
+function copyText(text){
   const done = () => { $('status').textContent = 'Copied.'; };
   const fail = () => { $('status').textContent = 'Could not copy — select the text and copy it by hand.'; };
   if (navigator.clipboard && navigator.clipboard.writeText){ navigator.clipboard.writeText(text).then(done, fail); return; }
   const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select();
   let ok = false; try { ok = document.execCommand && document.execCommand('copy'); } catch (e) {}
   ta.remove(); (ok ? done : fail)();
+}
+
+/* ---- Export for agent (Agent design 4): the app's one door ---- */
+
+// Everything that leaves Domus for an agent is built here, from an
+// allow-list: each field is named below, nothing is copied from a record
+// wholesale. In: open work — title, kind, month, size, its vendors' names,
+// its steps (title, who, tick), a recurring job's months. Out, always:
+// costs and the budget (N., 2026-10-20: the agent does admin, not money);
+// a vendor's phone, email, website and notes; the notes on the work (free
+// text); ids and timestamps; done work. Vendor names cross by N.'s
+// decision (2026-10-19: Public). Nothing goes over the network — the sheet
+// shows the document and N. copies it by hand.
+function agentExport(){
+  const open = openList(), today = new Date();
+  const item = p => {
+    const o = { title: p.title, kind: kindOf(p) };
+    if (!isTask(p)){   // a task carries no month or size (D10), even hidden ones
+      o.month = p.target_month || null;
+      o.size = p.effort || null;
+    }
+    if (isRecurring(p)) o.months_of_year = rhythm(p).map(m => MONTHS_LONG[m - 1]);
+    o.vendors = (p.vendor_ids || []).map(vendorName);
+    const steps = stepsOf(p);
+    if (steps.length) o.steps = steps.map(st => ({ title: st.title, vendor: st.vendor_id ? vendorName(st.vendor_id) : null, done: !!st.done }));
+    return o;
+  };
+  return {
+    app: 'domus',
+    exported: `${ymOf(nowMonth())}-${String(today.getDate()).padStart(2, '0')}`,
+    about: 'Open household work done by vendors. month is YYYY-MM (null = no month yet); size is S, M or L; a recurring job\'s month is its next time.',
+    work: open.filter(isTask).concat(open.filter(p => !isTask(p))).map(item),
+  };
+}
+const agentText = () => JSON.stringify(agentExport(), null, 2) + '\n';
+function renderExportSheet(){
+  $('sheet').setAttribute('aria-label', 'Export for agent');
+  $('sheet').innerHTML = `<div class="in"><div class="grab"></div><button class="close" type="button" id="s-close">Close</button>
+    <h2 class="t" style="border:none">This is what leaves the phone</h2>
+    <p class="note" style="margin:-6px 0 12px">Your open work. Costs and the budget, vendors' phone, email, website and notes, your notes on the work, and done work stay here.</p>
+    <pre class="xdoc" id="export-doc">${esc(agentText())}</pre>
+    <div class="btns"><button class="btn pri" type="button" id="export-copy">Copy</button></div>
+  </div>`;
 }
 
 function addVendor(){
@@ -1075,14 +1123,14 @@ $('sheet').addEventListener('keydown', e => {
   if (e.key === 'Enter' && e.target.tagName === 'INPUT'){ e.preventDefault(); e.target.blur(); e.target.dispatchEvent(new Event('change', { bubbles: true })); if (sheet === 'new' && e.target.id === 's-title') addDraft(); }
 });
 document.addEventListener('keydown', e => {
-  if (e.key === 'Escape' && (sheet || vsheet)){ e.preventDefault(); closeSheet(); return; }
+  if (e.key === 'Escape' && (sheet || vsheet || xsheet)){ e.preventDefault(); closeSheet(); return; }
   if (e.key !== 'Enter' && e.key !== ' ') return;
   const t = e.target.closest && e.target.closest('[data-budget]');
   if (t && !t.querySelector('input')){ e.preventDefault(); t.click(); }
 });
 
 document.addEventListener('click', e => {
-  const tab = e.target.closest('[role="tab"]');    if (tab){ sheet = null; draft = null; vsheet = null; show(tab.id.replace('tab-', '')); return; }
+  const tab = e.target.closest('[role="tab"]');    if (tab){ sheet = null; draft = null; vsheet = null; xsheet = false; show(tab.id.replace('tab-', '')); return; }
   const vs = e.target.closest('[data-vsheet]');    if (vs){ vsheet = vs.dataset.vsheet; render(); return; }
   if (e.target.id === 'vs-delete'){ if (askDeleteVendor(vsheet)) closeSheet(); return; }
   const proj = e.target.closest('[data-project]'); if (proj){ openSheet(proj.dataset.project); return; }
@@ -1099,6 +1147,8 @@ document.addEventListener('click', e => {
   if (e.target.id === 'toast-undo'){ const id = toastUndo; clearTimeout(toastTimer); $('toast').hidden = true; toastUndo = null; if (id) reopen(id); return; }
   if (e.target.id === 's-delete'){ askDelete(sheet); return; }
   if (e.target.id === 'vendor-copy'){ copyVendor(); return; }
+  if (e.target.id === 'export'){ xsheet = true; render(); return; }
+  if (e.target.id === 'export-copy'){ copyText(agentText()); return; }
   if (e.target.id === 'vendor-costs'){ showCosts = !showCosts; render(); return; }
   const bud = e.target.closest('[data-budget]');   if (bud){ startBudget(bud); return; }
   const open = e.target.closest('[data-open]');    if (open){ openVendor = open.dataset.open; vsheet = null; view = 'vendor'; render(); return; }
