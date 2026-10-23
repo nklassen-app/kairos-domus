@@ -31,6 +31,14 @@ This system is deliberately biased toward creative velocity and tolerates mess. 
 - Prefer frugal, modular, swappable solutions. Small standalone apps over integrations.
 - **DoD first, small radius.** A backlog story leads with what N. will be able to do, not with a design; its radius must be tryable on the real surface within one session. If it is wider, say so **before** building and split it — never build it whole quietly.
 
+## N.'s time goes to quests (N., 2026-10-23)
+Kairos exists to take load off N., not to add it. N. is the bottleneck, so every step that lands on N. has to earn its place there.
+- **Whatever Claude can do with N.'s review, Claude does.** N. reviews; N. does not perform. A settings change, a command, a draft, a check, a lookup: Claude does it in the session and reports it for review. N.'s own hands are needed only for what Claude cannot reach (an account's own UI, a physical device, money, a real-world act) and for decisions.
+- **Any non-quest task that an AI agent or a vendor can do goes to them.** When writing a story, ask of every step: *does this need N.?* If an agent or a vendor could carry it, the story says who, and N. is not given it.
+- **Decisions stay N.'s, but they come prepared.** Every decision on N. comes with Claude's recommendation. For **taste** decisions (naming, design, wording, ordering) the recommendation is a **default with a date**: if N. has not changed it by then, it stands. Privacy, the boundary, money and acts in N.'s name never take a default.
+- **A step on N. reads as a task.** Verb first, what to do and where, about how long, understandable without opening the story ("Read the house-twin page and name the module — 15 min"). Never a bare label like "read and reshaped".
+- **A step on N. is shown only when it is ready.** It waits until every step before it in its story is done; the dashboard leaves out what is still blocked.
+
 ## Tiers and rigor
 - Rigor scales with tier. A throwaway spike inside the boundary needs no hardened auth, audit logging, or encryption-at-rest — those are earned later.
 - **Do not build Tier 2 (multi-user, other people's data) capability** without an explicit, deliberate go-ahead. The jump from personal to multi-user is a hard gate, not a smooth slope.
