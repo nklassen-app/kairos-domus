@@ -38,6 +38,8 @@ Kairos exists to take load off N., not to add it. N. is the bottleneck, so every
 - **Decisions stay N.'s, but they come prepared.** Every decision on N. comes with Claude's recommendation. For **taste** decisions (naming, design, wording, ordering) the recommendation is a **default with a date**: if N. has not changed it by then, it stands. Privacy, the boundary, money and acts in N.'s name never take a default.
 - **A step on N. reads as a task.** Verb first, what to do and where, about how long, understandable without opening the story ("Read the house-twin page and name the module — 15 min"). Never a bare label like "read and reshaped".
 - **A step on N. is shown only when it is ready.** It waits until every step before it in its story is done; the dashboard leaves out what is still blocked.
+- **A design doc is reviewed in the session that writes it.** Claude does not hand N. a "read and reshape" task. In the same session (here or a cloud session on the phone), Claude puts the doc's open points to N. as a few questions, each with its recommendation, and writes the answers back into the doc. Only if N. defers does a review become a step on N.
+- **Session end: one piece of feedback.** Before stopping, Claude looks at how N. worked with Claude in this session and gives one thing to learn, change or do better: specific, drawn from the session, one or two sentences. Never praise in its place.
 
 ## Tiers and rigor
 - Rigor scales with tier. A throwaway spike inside the boundary needs no hardened auth, audit logging, or encryption-at-rest — those are earned later.
