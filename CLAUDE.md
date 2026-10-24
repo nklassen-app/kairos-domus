@@ -1,6 +1,6 @@
-# CLAUDE.md — Kairos OS build sessions
+# CLAUDE.md — Kairos build sessions
 
-This project is governed by the **Foundation Charter v1.6** (`kairos-foundation/FOUNDATION_CHARTER.md`, at the root of the `kairos_v3` checkout — read it if a judgment call isn't covered here). This file is a **verbatim copy of the master** in `kairos-foundation/`; edit the master, then run `kairos-foundation/scripts/sync_claude_md.sh` — never edit a copy. This file is the operative subset: the rules that should shape every session. It is *context, not enforcement* — the non-negotiable boundary is enforced by mechanisms (`.gitignore`, out-of-tree data, the pre-push audit), not by trusting these words. Where a rule here and a prompt conflict, this file wins, or the Charter is amended deliberately — never overridden silently.
+This project is governed by the **Foundation Charter v1.7** (`kairos-foundation/FOUNDATION_CHARTER.md`, at the root of the `kairos_v3` checkout — read it if a judgment call isn't covered here). This file is a **verbatim copy of the master** in `kairos-foundation/`; edit the master, then run `kairos-foundation/scripts/sync_claude_md.sh` — never edit a copy. This file is the operative subset: the rules that should shape every session. It is *context, not enforcement* — the non-negotiable boundary is enforced by mechanisms (`.gitignore`, out-of-tree data, the pre-push audit), not by trusting these words. Where a rule here and a prompt conflict, this file wins, or the Charter is amended deliberately — never overridden silently.
 
 ## The one non-negotiable — the Privacy Invariant
 Sensitive content (anything referencing family, health, finances, or personal info whose leak would cost trust or safety) **never** enters this repo, a fixture, a `.db`, a debug dump, or a pasted session. Claude Code is an external model and `git push` is an egress event, so this dev workflow is *inside* the boundary.
@@ -29,6 +29,7 @@ This system is deliberately biased toward creative velocity and tolerates mess. 
 - **Defer the mechanism until use proves it's needed.** Do not build features, abstractions, analytics, auth, multi-user, hosting, or backups speculatively. If it isn't required by the current tier and a real, present need, don't build it — flag it as deferred.
 - **Walking skeleton first, then thicken.** Get the load-bearing thing running end-to-end before adding depth. If you find yourself elaborating past what was asked, stop — that's scope creep.
 - Prefer frugal, modular, swappable solutions. Small standalone apps over integrations.
+- **Use case first; the front end last, thin and fragmented** (Charter v1.7, Part 5). Never build a shared Kairos surface; a module gets the smallest front end its use needs, and an unused one is retired, not polished. Kairos has no app of its own: Claude Code is where N. builds and steers.
 - **DoD first, small radius.** A backlog story leads with what N. will be able to do, not with a design; its radius must be tryable on the real surface within one session. If it is wider, say so **before** building and split it — never build it whole quietly.
 
 ## N.'s time goes to quests (N., 2026-10-23)
