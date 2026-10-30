@@ -45,7 +45,7 @@ Kairos exists to take load off N., not to add it. N. is the bottleneck, so every
 ## Buckets and the focus cap (N., 2026-10-30)
 Every epic sits in one bucket (the backlog's *Buckets* section): **Projects** (the modules), **Public profile**, **Foundation** (the boundary, accounts, host, Charter) and **Utilities** (small build tools for N.).
 - **At most three projects in focus in any week**, named on the backlog's focus line and changed only at the weekly review. Build work on a parked project: flag it and don't start; N. decides whether it swaps in.
-- **A utility earns its build** by removing a manual step N. has already done at least twice; one in flight at a time.
+- **A utility earns its build** by removing a manual step N. has already done at least twice; one in flight at a time. Utilities have no epic: each is a story named after its tool.
 - **Public profile launches before it gets a process:** no cross-channel routine until ai-era is live with its first three posts.
 
 ## Tiers and rigor
