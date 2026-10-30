@@ -50,10 +50,8 @@ N. is the bottleneck; every step that lands on N. has to earn its place.
 - A pushed secret is a **burned secret**: rotate it, don't just delete the file.
 - **Repos are private by default.** Public only by the Charter Part 7 exception and where the Registry's Repo column says so: Tier ≤ 1, data only in the viewer's browser, no secret, no outbound call beyond loading its own page. The one named exception is the Whiteboard's `kairosDoor()` (Charter Part 7); a second door is a new amendment. Sensitive or personal-strategy content is never public; making a repo public is N.'s decision.
 
-## 7 · Phone apps (the Floor pattern: Floor, Whiteboard, Lares; Domus frozen)
-- The APK is build output and never in the repo (`*.apk` is ignored).
-- A content change ships by pushing the page and bumping the `sw.js` cache name; no APK step.
-- A shell change (icon, app name, `capacitor.config.json`, Capacitor upgrade) needs a rebuild. Claude's last step in that session: send `native/android/app/build/outputs/apk/debug/app-debug.apk` as a file card and say plainly "new APK — put it in Drive, open it on the phone, install over the top". Never uninstall or clear data first: the WebView's localStorage is the only copy.
+## 7 · Building a module
+No module is named here. What governs one: its **Registry row** (`kairos-foundation/REGISTRY.md`: tier, data class, repo, egress doors, deploy), written before any code; **`kairos-foundation/MODULE_TEMPLATE.md`** for each class's skeleton, conventions and deploy, including the phone-app (Capacitor) pattern; and the module's own README for what is specific to it. Read the template's section for the module's class before changing how it builds or ships.
 
 ## When to stop and ask
 - Anything that would move real data into a tracked path, weaken an ignore rule or cross the boundary.
