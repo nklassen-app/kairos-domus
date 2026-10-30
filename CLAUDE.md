@@ -6,7 +6,7 @@ The rules for every Kairos session, under the **Foundation Charter** (`kairos-fo
 - **This session is the Consumer tier: Public, Personal (by hand) and synthetic data only.** Family, health, finances, the partner's data, how to reach the house, mail, calendar, contacts and personal-strategy content never enter context, a repo, a fixture, a `.db`, a debug dump or a commit. When unsure of a class, take the higher one; where each class may go is the matrix in Charter Part 1.
 - Mocks come from the *schema*, never from a real instance. If a task seems to need real sensitive data, **stop and flag it**; never fictionalise real data to proceed.
 - **Never weaken the boundary:** never relax the canonical `.gitignore` block, commit a `.db`, key, `.env` or real data, or loosen the Gmail/Google Calendar deny in `.claude/settings.json` (never call those connectors; if the rule is missing, flag it). Asked to, refuse and say why.
-- **Before every push:** `kairos-foundation/scripts/audit_push.sh` (the `pre-push` hook; run it by hand where the hook isn't installed), and give N. the list of files it sends. A push to a public repo is never sent unread.
+- **Every push goes through the audit** (`audit_push.sh`, the `pre-push` hook the glance installs); never `--no-verify`. Give N. the list of files it sends. A public repo's push from a cloud session waits for N.'s yes to that list: only after the yes, push with the `KAIROS_READ_OK` value the hook names.
 - **Repos are private** unless the Registry's Repo column says public; making one public is N.'s decision. Sensitive or personal-strategy content is never public.
 
 ## 2 · The session
