@@ -42,6 +42,12 @@ Kairos exists to take load off N., not to add it. N. is the bottleneck, so every
 - **A design doc is reviewed in the session that writes it.** Claude does not hand N. a "read and reshape" task. In the same session (here or a cloud session on the phone), Claude puts the doc's open points to N. as a few questions, each with its recommendation, and writes the answers back into the doc. Only if N. defers does a review become a step on N.
 - **Session end: one piece of feedback.** Before stopping, Claude looks at how N. worked with Claude in this session and gives one thing to learn, change or do better: specific, drawn from the session, one or two sentences. Never praise in its place.
 
+## Buckets and the focus cap (N., 2026-10-30)
+Every epic sits in one bucket (the backlog's *Buckets* section): **Projects** (the modules), **Public profile**, **Foundation** (the boundary, accounts, host, Charter) and **Utilities** (small build tools for N.).
+- **At most three projects in focus in any week**, named on the backlog's focus line and changed only at the weekly review. Build work on a parked project: flag it and don't start; N. decides whether it swaps in.
+- **A utility earns its build** by removing a manual step N. has already done at least twice; one in flight at a time.
+- **Public profile launches before it gets a process:** no cross-channel routine until ai-era is live with its first three posts.
+
 ## Tiers and rigor
 - Rigor scales with tier. A throwaway spike inside the boundary needs no hardened auth, audit logging, or encryption-at-rest — those are earned later.
 - **Do not build Tier 2 (multi-user, other people's data) capability** without an explicit, deliberate go-ahead. The jump from personal to multi-user is a hard gate, not a smooth slope.
