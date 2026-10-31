@@ -66,3 +66,6 @@ home_kg.key
 # never committed: this repo is public. Generated 2026-09-19; the rule
 # keeps any later export out too.
 *seed*.json
+
+# The APK the build drops at the root, for Drive — never committed (2026-10-31).
+/*.apk
