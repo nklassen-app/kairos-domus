@@ -1,5 +1,10 @@
 # Domus
 
+> **Retired 2026-11-10** (Lares 10, in `kairos_v3`'s backlog). Superseded by
+> Lares (`nklassen-app/kairos-lares`), the house agent. This repo is
+> archived: read-only, GitHub Pages off. The record is
+> `kairos-system/history/domus.md` in `kairos_v3`.
+
 The household work backlog: everything the household's vendors do, in one
 list — small **tasks** (fix a door lock) and **projects** planned by month,
 with an estimated cost per project and the year's budget in its own view —
